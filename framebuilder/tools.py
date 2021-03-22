@@ -209,18 +209,24 @@ def is_valid_mac_address(mac):
 
 
 def format_mac_addr(mac):
-    """
+    '''
     Check if mac has colons and make sure that bytes are divided by colons
-    """
+    '''
     mac = mac.replace(':', '')
     return ':'.join(mac[0+x*2:2+x*2] for x in range(6))
 
 
 def is_valid_ipv4_address(ip_addr):
     '''
-    check if string ip is a valid IP v 4 address
+    Check if string ip is a valid IP v 4 address
     :param ip: IP address in dotted decimal notation
     '''
+    if not isinstance(ip_addr, str):
+        return False
+    def isIPv4(seg):
+        return str(int(seg)) == seg and 0 <= int(seg) <= 255
+    if not (ip_addr.count(".") == 3 and all(isIPv4(part) for part in ip_addr.split("."))):
+        return False
     try:
         socket.inet_aton(ip_addr)
         return True
