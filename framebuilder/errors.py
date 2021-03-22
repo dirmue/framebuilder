@@ -2,19 +2,20 @@
 
 class MTUExceededException(Exception):
     '''
-    raised if the supposed payload of an ethernet frame is larger than the MTU
+    Exception raised if the supposed payload of an ethernet frame is larger
+    than the MTU
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
 
     def __str__(self):
         return 'Frame payload larger than MTU: {}'.format(self.err_msg)
- 
+
 
 class MaxTCPHeaderSizeExceeded(Exception):
     '''
-    raised in case TCP header size is exceeded (mostly due to too many TCP
-    options)
+    Exception raised in case TCP header size is exceeded (mostly due to too
+    many TCP options)
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
@@ -25,18 +26,18 @@ class MaxTCPHeaderSizeExceeded(Exception):
 
 class SocketCreationException(Exception):
     '''
-    raised in case socket creation fails
+    Exception raised in case socket creation fails
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
 
     def __str__(self):
         return 'Could not create socket: {}'.format(self.err_msg)
- 
+
 
 class SocketBindException(Exception):
     '''
-    raised in case socket binding fails
+    Exception raised in case socket binding fails
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
