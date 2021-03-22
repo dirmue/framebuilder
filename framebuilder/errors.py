@@ -7,6 +7,7 @@ class MTUExceededException(Exception):
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
+        super().__init__(err_msg)
 
     def __str__(self):
         return 'Frame payload larger than MTU: {}'.format(self.err_msg)
@@ -19,6 +20,7 @@ class MaxTCPHeaderSizeExceeded(Exception):
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
+        super().__init__(err_msg)
 
     def __str__(self):
         return 'TCP header too big: {}'.format(self.err_msg)
@@ -30,6 +32,7 @@ class SocketCreationException(Exception):
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
+        super().__init__(err_msg)
 
     def __str__(self):
         return 'Could not create socket: {}'.format(self.err_msg)
@@ -41,6 +44,7 @@ class SocketBindException(Exception):
     '''
     def __init__(self, err_msg):
         self.err_msg = err_msg
+        super().__init__(err_msg)
 
     def __str__(self):
         return 'Could not bind socket: {}'.format(self.err_msg)
@@ -52,6 +56,7 @@ class InvalidMACAddrException(Exception):
     '''
     def __init__(self, mac):
         self.mac = mac
+        super().__init__(mac)
 
     def __str__(self):
         return 'Invalid MAC address: {}'.format(self.mac)
@@ -61,20 +66,18 @@ class InvalidIPv4AddrException(Exception):
     '''
     Exception raised when invalid IPv4 address is passed
     '''
-    def __init__(self, ip):
-        self.ip = ip
+    def __init__(self, ip_addr):
+        self.ip_addr = ip_addr
+        super().__init__(ip_addr)
 
     def __str__(self):
-        return 'Invalid IPv4 address: {}'.format(self.ip)
+        return 'Invalid IPv4 address: {}'.format(self.ip_addr)
 
 
 class IncompleteIPv4HeaderException(Exception):
     '''
     Exception raised when no or incomplete IPv4 header is passed
     '''
-    def __init__(self, data):
-        self.data = data
-
     def __str__(self):
         return 'IPv4 header missing or incomplete!'
 
@@ -83,8 +86,5 @@ class IncompleteFrameHeaderException(Exception):
     '''
     Exception raised when no or an incomplete frame header is passed
     '''
-    def __init__(self, data):
-        self.data = data
-
     def __str__(self):
         return 'Frame header missing or incomplete!'
