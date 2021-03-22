@@ -37,6 +37,7 @@ class VlanTag:
             self._dei = vlan_tag.get('vlan_dei', 0) & 0b1
             self._tpi = 0x8100
         except ValueError:
+            # TODO Do not use sys.exit in library code, raise an exception
             print('Invalid field data in VLAN tag!')
             sys.exit(1)
 
@@ -303,6 +304,7 @@ class Frame:
         :param payload: new payload
         '''
         self._payload = payload
+        # TODO check whether commented out code can be removed
         ### Padding should be done by driver I guess
         #fr_len = len(self.get_bytes())
         #if fr_len < 64:
