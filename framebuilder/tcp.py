@@ -1,6 +1,6 @@
 '''Module for TCP functions used by custompk'''
 
-from framebuilder import tools, errors
+from framebuilder import tools, errors, layer3
 
 class TCPOption:
     '''
@@ -102,7 +102,7 @@ class TCPOption:
                 'option_data': self._odata}
 
 
-class TCPSegment:
+class TCPSegment(layer3.Base):
     '''
     Create a TCP segment according to RFC 793
 
@@ -150,33 +150,36 @@ class TCPSegment:
         if tcp_data is None:
             tcp_data = {}
 
-        self._layer3_proto = tcp_data.get('layer3_proto', 0x0800)
-        if self._layer3_proto == 0x0800:
-            # IPv4 pseudo header
-            self._pseudo_header = tcp_data.get('pseudo_header', b'\x00' * 12)
-        if self._layer3_proto == 0x86dd:
-            # IPv6 pseudo header
-            self._pseudo_header = tcp_data.get('pseudo_header', b'\x00' * 40)
-        if self._pseudo_header is None:
-            # empty pseudo header for unknown layer 3 protocols
-            self._pseudo_header = tcp_data.get('pseudo_header', b'')
-        self._src_port = tcp_data.get('src_port', 0) & 0xffff
-        self._dst_port = tcp_data.get('dst_port', 0) & 0xffff
         self._seq_nr = tcp_data.get('seq_nr', 0) & 0xffffffff
         self._ack_nr = tcp_data.get('ack_nr', 0) & 0xffffffff
         self._data_offset = tcp_data.get('data_offset', 5) & 0xf
         self._flags = tcp_data.get('flags', 0) & 0xff
         self._window = tcp_data.get('window', 0) & 0xffff
-        self._checksum = tcp_data.get('checksum', 0) & 0xffff
         self._urg_ptr = tcp_data.get('urg_ptr', 0) & 0xffff
-        self._payload = tcp_data.get('payload', b'')
         self._options = []
         if tcp_data.get('options', None) is not None:
             for opt in tcp_data['options']:
                 next_option = TCPOption(opt)
                 self._options.append(next_option)
-        if tcp_data.get('checksum', None) is None:
-            self.update_checksum()
+
+        proto = tcp_data.get('layer3_proto', 0x0800)
+        if proto == 0x0800:
+            # IPv4 pseudo header
+            pseudo_header = tcp_data.get('pseudo_header', b'\x00' * 12)
+        elif proto == 0x86dd:
+            # IPv6 pseudo header
+            pseudo_header = tcp_data.get('pseudo_header', b'\x00' * 40)
+        if pseudo_header is None:
+            # empty pseudo header for unknown layer 3 protocols
+            pseudo_header = tcp_data.get('pseudo_header', b'')
+        super().__init__(
+            tcp_data.get('src_port', 0) & 0xffff,
+            tcp_data.get('dst_port', 0) & 0xffff,
+            proto,
+            pseudo_header,
+            tcp_data.get('payload', b''),
+            tcp_data.get('checksum', 0) & 0xffff
+            )
 
 
     @classmethod
@@ -271,60 +274,6 @@ class TCPSegment:
                      self._payload)
 
 
-    def encapsulate(self, packet):
-        '''
-        Encapsulate TCP segment into packet
-        :param packet: Layer 3 packet object
-        '''
-        self.create_pseudo_header(packet)
-        self.update_checksum()
-        packet.payload = self.get_bytes()
-
-
-    def create_pseudo_header(self, packet):
-        '''
-        Create the layer 3 pseudo header and update its length field
-        :param packet: Layer 3 packet object
-        '''
-        self._pseudo_header = packet.create_pseudo_header()
-
-        # Quick and dirty protocol check. isinstance() is probably better.
-        if len(self._pseudo_header) == 12:
-            # IPv4
-            self._layer3_proto = 0x0800
-            new_len_bytes = tools.to_bytes(len(self.get_bytes()), 2)
-            self._pseudo_header = tools.set_bytes_at(self._pseudo_header,
-                                                     new_len_bytes, 10)
-        if len(self._pseudo_header) == 40:
-            # IPv6
-            self._layer3_proto = 0x86dd
-            new_len_bytes = tools.to_bytes(len(self.get_bytes()), 4)
-            self._pseudo_header = tools.set_bytes_at(self._pseudo_header,
-                                                     new_len_bytes, 32)
-
-
-    def update_checksum(self):
-        '''
-        Update TCP checksum
-        '''
-        self._checksum = 0
-        self._checksum = tools.calc_chksum(self._pseudo_header +
-                                           self.get_bytes() +
-                                           b'\x00' * (len(self._payload) % 2))
-
-
-    def verify_checksum(self):
-        '''
-        Verify TCP checksum
-        '''
-        result = tools.calc_chksum(self._pseudo_header +
-                                   self.get_bytes() +
-                                   b'\x00' * (len(self._payload) % 2))
-        if result == 0xffff:
-            return True
-        return False
-
-
     def get_flag_str(self):
         '''
         Return string representation of set flags
@@ -386,54 +335,6 @@ class TCPSegment:
         return len(self.payload)
 
     length = property(__get_length)
-
-
-    def __get_src_port(self):
-        '''
-        Getter for src_port
-        '''
-        return self._src_port
-
-
-    def __set_src_port(self, src_port):
-        '''
-        Setter for src_port
-        '''
-        self._src_port = src_port
-
-    src_port = property(__get_src_port, __set_src_port)
-
-
-    def __get_dst_port(self):
-        '''
-        Getter for dst_port
-        '''
-        return self._dst_port
-
-
-    def __set_dst_port(self, dst_port):
-        '''
-        Setter for dst_port
-        '''
-        self._dst_port = dst_port
-
-    dst_port = property(__get_dst_port, __set_dst_port)
-
-
-    def __get_pseudo_header(self):
-        '''
-        Getter for pseudo_header
-        '''
-        return self._pseudo_header
-
-
-    def __set_pseudo_header(self, pseudo_header):
-        '''
-        Setter for pseudo_header
-        '''
-        self._pseudo_header = pseudo_header
-
-    pseudo_header = property(__get_pseudo_header, __set_pseudo_header)
 
 
     def __get_seq_nr(self):
@@ -676,22 +577,6 @@ class TCPSegment:
     window = property(__get_window, __set_window)
 
 
-    def __get_checksum(self):
-        '''
-        Getter for checksum
-        '''
-        return self._checksum
-
-
-    def __set_checksum(self, checksum):
-        '''
-        Setter for checksum
-        '''
-        self._checksum = checksum
-
-    checksum = property(__get_checksum, __set_checksum)
-
-
     def __get_urg_ptr(self):
         '''
         Getter for urg_ptr
@@ -706,22 +591,6 @@ class TCPSegment:
         self._urg_ptr = urg_ptr
 
     urg_ptr = property(__get_urg_ptr, __set_urg_ptr)
-
-
-    def __get_payload(self):
-        '''
-        Getter for payload
-        '''
-        return self._payload
-
-
-    def __set_payload(self, payload):
-        '''
-        Setter for payload
-        '''
-        self._payload = payload
-
-    payload = property(__get_payload, __set_payload)
 
 
     def __get_options(self):
