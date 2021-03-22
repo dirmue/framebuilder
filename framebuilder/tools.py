@@ -65,42 +65,19 @@ def print_pkg_data_ascii(pkgdata, bytes_per_row=32):
     '''
     Print binary data as table of printable characters
     '''
-    bytes_cnt = 0
-    data = struct.unpack('!%dc' % len(pkgdata), pkgdata)
-
-    if len(pkgdata) < bytes_per_row:
-        print('+--------' + '+-' * len(pkgdata) + '+')
-    else:
-        print('+--------' + '+-' * bytes_per_row + '+')
-
-    for b in data:
-        c = ' '
-        if b.decode('latin_1').isprintable():
-            c = b.decode('latin_1')
-
-        if bytes_cnt == 0:
-            print('| 0x0000 |', end = '')
-        bytes_cnt += 1
-        if bytes_cnt % bytes_per_row != 0:
-            print(c, end = '|')
-        else:
-            print(c, end = '|\n')
-            if bytes_cnt != len(data):
-                print('|        ' + '+-' * bytes_per_row + '+')
-                print('| 0x%s |' % format((
-                    bytes_cnt // bytes_per_row) * bytes_per_row, '04x'), \
-                    end = '')
-            else:
-                print('+--------' + '+-' * bytes_per_row + '+')
-
-    if bytes_cnt % bytes_per_row != 0:
-        print('\n+--------', end = '')
-        print('+-' * (bytes_cnt % bytes_per_row) + '+')
+    _print_pkg_data(pkgdata, 'ascii', bytes_per_row=bytes_per_row)
 
 
 def print_pkg_data_hex(pkgdata, bytes_per_row=32):
     '''
     Print binary data as table of hex values
+    '''
+    _print_pkg_data(pkgdata, 'hex', bytes_per_row=bytes_per_row)
+
+
+def _print_pkg_data(pkgdata, mode, bytes_per_row):
+    '''
+    Print binary data as table
     '''
     bytes_cnt = 0
     data = struct.unpack('!%dc' % len(pkgdata), pkgdata)
@@ -110,14 +87,20 @@ def print_pkg_data_hex(pkgdata, bytes_per_row=32):
     else:
         print('+--------' + '+--' * bytes_per_row + '+')
 
-    for b in data:
+    for byte in data:
+        bytes_cnt += 1
+        chars = ' '
+        if mode == 'hex':
+            chars = byte.hex()
+        elif mode == 'ascii':
+            if byte.decode('latin_1').isprintable():
+                chars = byte.decode('latin_1')
         if bytes_cnt == 0:
             print('| 0x0000 |', end = '')
-        bytes_cnt += 1
         if bytes_cnt % bytes_per_row != 0:
-            print(b.hex(), end = '|')
+            print(chars, end = '|')
         else:
-            print(b.hex(), end = '|\n')
+            print(chars, end = '|\n')
             if bytes_cnt != len(data):
                 print('|        ' + '+--' * bytes_per_row + '+')
                 print('| 0x%s |' % format((bytes_cnt // bytes_per_row) * \
