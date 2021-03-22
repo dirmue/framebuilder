@@ -322,10 +322,10 @@ class Frame:
                'dst_addr': self._dst_addr,
                'ether_type': self._ether_type,
                'payload': self._payload}
-        if self._vlan_tag is not None:
-            dct['vlan_tag'] = self._vlan_tag.get_dict()
-        else:
+        if self._vlan_tag is None:
             dct['vlan_tag'] = None
+        else:
+            dct['vlan_tag'] = self._vlan_tag.get_dict()
         return dct
 
 
@@ -778,5 +778,4 @@ class EthernetHandler:
         except Exception as ex:
             if pass_on_error:
                 pass
-            else:
-                raise ex
+            raise ex
