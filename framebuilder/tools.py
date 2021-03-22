@@ -108,7 +108,6 @@ def _print_pkg_data(pkgdata, mode, bytes_per_row):
             else:
                 print('+--------' + '+--' * bytes_per_row + '+')
 
-
     if bytes_cnt % bytes_per_row != 0:
         print('\n+--------', end = '')
         print('+--' * (bytes_cnt % bytes_per_row) + '+')
@@ -204,7 +203,7 @@ def is_valid_mac_address(mac):
     :param mac: String containing a MAC address
     '''
     is_valid = bool(re.fullmatch('([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', mac))
-    if is_valid == False:
+    if not is_valid:
         is_valid = bool(re.fullmatch('([0-9A-Fa-f]{2}){6}', mac))
     return is_valid
 
@@ -217,13 +216,13 @@ def format_mac_addr(mac):
     return ':'.join(mac[0+x*2:2+x*2] for x in range(6))
 
 
-def is_valid_ipv4_address(ip):
+def is_valid_ipv4_address(ip_addr):
     '''
     check if string ip is a valid IP v 4 address
     :param ip: IP address in dotted decimal notation
     '''
     try:
-        socket.inet_aton(ip)
+        socket.inet_aton(ip_addr)
         return True
     except:
         return False
@@ -259,8 +258,8 @@ def hide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp'):
         else:
             cmd = 'iptables -A INPUT -i {} -p {} -s {} -j DROP'
             os.system(cmd.format(in_iface, proto, remote_ip))
-    except Exception as e:
-        print(e)
+    except Exception as ex:
+        print(ex)
 
 
 def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
@@ -286,8 +285,8 @@ def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
         else:
             cmd = 'iptables -D INPUT -i {} -p {} -s {} -j DROP'
             os.system(cmd.format(in_iface, proto, remote_ip))
-    except Exception as e:
-        print(e)
+    except Exception as ex:
+        print(ex)
 
 
 def get_ip_dict_list(ip_cmd):
