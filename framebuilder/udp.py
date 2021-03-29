@@ -1,9 +1,9 @@
 '''Module for UDP functions used by custompk'''
 
-from framebuilder import tools
+from framebuilder import tools, layer3
 
 
-class UDPDatagram():
+class UDPDatagram(layer3.Base):
     '''
     Creata a UDP datagram according to RFC 768
 
@@ -37,21 +37,26 @@ class UDPDatagram():
         if udp_data is None:
             udp_data = {}
 
-        self._layer3_proto = udp_data.get('layer3_proto', 0x0800)
-        if self._layer3_proto == 0x0800:
-            # IPv4 pseudo header
-            self._pseudo_header = udp_data.get('pseudo_header', b'\x00' * 12)
-        if self._layer3_proto == 0x86dd:
-            # IPv6 pseudo header
-            self._pseudo_header = udp_data.get('pseudo_header', b'\x00' * 40)
-        if self._pseudo_header is None:
-            # pseudo header for unknown layer 3 protocols
-            self._pseudo_header = udp_data.get('pseudo_header', b'')
-        self._src_port = udp_data.get('src_port', 0) & 0xffff
-        self._dst_port = udp_data.get('dst_port', 0) & 0xffff
         self._length = udp_data.get('length', 0) & 0xffff
-        self._checksum = udp_data.get('checksum', 0) & 0xffff
-        self._payload = udp_data.get('payload', b'')
+
+        proto = udp_data.get('layer3_proto', 0x0800)
+        if proto == 0x0800:
+            # IPv4 pseudo header
+            pseudo_header = udp_data.get('pseudo_header', b'\x00' * 12)
+        elif self._layer3_proto == 0x86dd:
+            # IPv6 pseudo header
+            pseudo_header = udp_data.get('pseudo_header', b'\x00' * 40)
+        if pseudo_header is None:
+            # pseudo header for unknown layer 3 protocols
+            pseudo_header = udp_data.get('pseudo_header', b'')
+        super().__init__(
+            udp_data.get('src_port', 0) & 0xffff,
+            udp_data.get('dst_port', 0) & 0xffff,
+            proto,
+            pseudo_header,
+            udp_data.get('payload', b''),
+            udp_data.get('checksum', 0) & 0xffff,
+            )
 
 
     @classmethod
@@ -110,59 +115,6 @@ class UDPDatagram():
         return udp_data
 
 
-    def encapsulate(self, packet):
-        '''
-        Encapsulate UDP datagram into packet
-        :param packet: Layer 3 packet object
-        '''
-        self.create_pseudo_header(packet)
-        self.update_checksum()
-        packet.payload = self.get_bytes()
-
-
-    def create_pseudo_header(self, packet):
-        '''
-        Create the layer 3 pseudo header and update its length field
-        :param packet: Layer 3 packet object
-        '''
-        self._pseudo_header = packet.create_pseudo_header()
-
-        # Quick and dirty protocol check. isinstance() is probably better.
-        if len(self._pseudo_header) == 12:
-            # IPv4
-            self._layer3_proto = 0x0800
-            new_len_bytes = tools.to_bytes(self._length, 2)
-            self._pseudo_header = tools.set_bytes_at(self._pseudo_header,
-                                                     new_len_bytes, 10)
-        if len(self._pseudo_header) == 40:
-            # IPv6
-            self._layer3_proto = 0x86dd
-            new_len_bytes = tools.to_bytes(self._length, 4)
-            self._pseudo_header = tools.set_bytes_at(self._pseudo_header,
-                                                     new_len_bytes, 32)
-
-
-    def update_checksum(self):
-        '''
-        Update UDP checksum and length
-        '''
-        self._checksum = 0
-        self._checksum = tools.calc_chksum(self._pseudo_header +
-                                           self.get_bytes() +
-                                           b'\x00' * (len(self._payload) % 2))
-
-    def verify_checksum(self):
-        '''
-        Verify UDP checksum
-        '''
-        result = tools.calc_chksum(self._pseudo_header +
-                                   self.get_bytes() +
-                                   b'\x00' * (len(self._payload) % 2))
-        if result == 0xffff:
-            return True
-        return False
-
-
     def get_bytes(self):
         '''
         Return UDP datagram as bytes
@@ -172,38 +124,6 @@ class UDPDatagram():
                      tools.to_bytes(self._length, 2) +
                      tools.to_bytes(self._checksum, 2) +
                      self._payload)
-
-
-    def __get_src_port(self):
-        '''
-        Getter source port
-        '''
-        return self._src_port
-
-
-    def __set_src_port(self, src_port):
-        '''
-        Setter source port
-        '''
-        self._src_port = src_port
-
-    src_port = property(__get_src_port, __set_src_port)
-
-
-    def __get_dst_port(self):
-        '''
-        Getter destination port
-        '''
-        return self._dst_port
-
-
-    def __set_dst_port(self, dst_port):
-        '''
-        Setter destination port
-        '''
-        self._dst_port = dst_port
-
-    dst_port = property(__get_dst_port, __set_dst_port)
 
 
     def __get_length(self):
@@ -220,52 +140,3 @@ class UDPDatagram():
         self._length = length
 
     length = property(__get_length, __set_length)
-
-
-    def __get_checksum(self):
-        '''
-        Getter checksum
-        '''
-        return self._checksum
-
-
-    def __set_checksum(self, checksum):
-        '''
-        Setter checksum
-        '''
-        self._checksum = checksum
-
-    checksum = property(__get_checksum, __set_checksum)
-
-
-    def __get_payload(self):
-        '''
-        Getter payload
-        '''
-        return self._payload
-
-
-    def __set_payload(self, payload):
-        '''
-        Setter payload
-        '''
-        self._payload = payload
-        self._length = len(self.get_bytes())
-
-    payload = property(__get_payload, __set_payload)
-
-
-    def __get_pseudo_header(self):
-        '''
-        Getter pseudo header
-        '''
-        return self._pseudo_header
-
-
-    def __set_pseudo_header(self, pseudo_header):
-        '''
-        Setter pseudo header
-        '''
-        self._pseudo_header = pseudo_header
-
-    pseudo_header = property(__get_pseudo_header, __set_pseudo_header)

@@ -65,42 +65,19 @@ def print_pkg_data_ascii(pkgdata, bytes_per_row=32):
     '''
     Print binary data as table of printable characters
     '''
-    bytes_cnt = 0
-    data = struct.unpack('!%dc' % len(pkgdata), pkgdata)
-
-    if len(pkgdata) < bytes_per_row:
-        print('+--------' + '+-' * len(pkgdata) + '+')
-    else:
-        print('+--------' + '+-' * bytes_per_row + '+')
-
-    for b in data:
-        c = ' '
-        if b.decode('latin_1').isprintable():
-            c = b.decode('latin_1')
-
-        if bytes_cnt == 0:
-            print('| 0x0000 |', end = '')
-        bytes_cnt += 1
-        if bytes_cnt % bytes_per_row != 0:
-            print(c, end = '|')
-        else:
-            print(c, end = '|\n')
-            if bytes_cnt != len(data):
-                print('|        ' + '+-' * bytes_per_row + '+')
-                print('| 0x%s |' % format((
-                    bytes_cnt // bytes_per_row) * bytes_per_row, '04x'), \
-                    end = '')
-            else:
-                print('+--------' + '+-' * bytes_per_row + '+')
-
-    if bytes_cnt % bytes_per_row != 0:
-        print('\n+--------', end = '')
-        print('+-' * (bytes_cnt % bytes_per_row) + '+')
+    _print_pkg_data(pkgdata, 'ascii', bytes_per_row=bytes_per_row)
 
 
 def print_pkg_data_hex(pkgdata, bytes_per_row=32):
     '''
     Print binary data as table of hex values
+    '''
+    _print_pkg_data(pkgdata, 'hex', bytes_per_row=bytes_per_row)
+
+
+def _print_pkg_data(pkgdata, mode, bytes_per_row):
+    '''
+    Print binary data as table
     '''
     bytes_cnt = 0
     data = struct.unpack('!%dc' % len(pkgdata), pkgdata)
@@ -110,21 +87,26 @@ def print_pkg_data_hex(pkgdata, bytes_per_row=32):
     else:
         print('+--------' + '+--' * bytes_per_row + '+')
 
-    for b in data:
+    for byte in data:
+        bytes_cnt += 1
+        chars = ' '
+        if mode == 'hex':
+            chars = byte.hex()
+        elif mode == 'ascii':
+            if byte.decode('latin_1').isprintable():
+                chars = byte.decode('latin_1')
         if bytes_cnt == 0:
             print('| 0x0000 |', end = '')
-        bytes_cnt += 1
         if bytes_cnt % bytes_per_row != 0:
-            print(b.hex(), end = '|')
+            print(chars, end = '|')
         else:
-            print(b.hex(), end = '|\n')
+            print(chars, end = '|\n')
             if bytes_cnt != len(data):
                 print('|        ' + '+--' * bytes_per_row + '+')
                 print('| 0x%s |' % format((bytes_cnt // bytes_per_row) * \
                         bytes_per_row, '04x'), end = '')
             else:
                 print('+--------' + '+--' * bytes_per_row + '+')
-
 
     if bytes_cnt % bytes_per_row != 0:
         print('\n+--------', end = '')
@@ -221,26 +203,32 @@ def is_valid_mac_address(mac):
     :param mac: String containing a MAC address
     '''
     is_valid = bool(re.fullmatch('([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', mac))
-    if is_valid == False:
+    if not is_valid:
         is_valid = bool(re.fullmatch('([0-9A-Fa-f]{2}){6}', mac))
     return is_valid
 
 
 def format_mac_addr(mac):
-    """
+    '''
     Check if mac has colons and make sure that bytes are divided by colons
-    """
+    '''
     mac = mac.replace(':', '')
     return ':'.join(mac[0+x*2:2+x*2] for x in range(6))
 
 
-def is_valid_ipv4_address(ip):
+def is_valid_ipv4_address(ip_addr):
     '''
-    check if string ip is a valid IP v 4 address
+    Check if string ip is a valid IP v 4 address
     :param ip: IP address in dotted decimal notation
     '''
+    if not isinstance(ip_addr, str):
+        return False
+    def isIPv4(seg):
+        return str(int(seg)) == seg and 0 <= int(seg) <= 255
+    if not (ip_addr.count(".") == 3 and all(isIPv4(part) for part in ip_addr.split("."))):
+        return False
     try:
-        socket.inet_aton(ip)
+        socket.inet_aton(ip_addr)
         return True
     except:
         return False
@@ -276,8 +264,8 @@ def hide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp'):
         else:
             cmd = 'iptables -A INPUT -i {} -p {} -s {} -j DROP'
             os.system(cmd.format(in_iface, proto, remote_ip))
-    except Exception as e:
-        print(e)
+    except Exception as ex:
+        print(ex)
 
 
 def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
@@ -303,8 +291,8 @@ def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
         else:
             cmd = 'iptables -D INPUT -i {} -p {} -s {} -j DROP'
             os.system(cmd.format(in_iface, proto, remote_ip))
-    except Exception as e:
-        print(e)
+    except Exception as ex:
+        print(ex)
 
 
 def get_ip_dict_list(ip_cmd):

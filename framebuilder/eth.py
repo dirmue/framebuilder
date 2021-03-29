@@ -37,6 +37,7 @@ class VlanTag:
             self._dei = vlan_tag.get('vlan_dei', 0) & 0b1
             self._tpi = 0x8100
         except ValueError:
+            # TODO Do not use sys.exit in library code, raise an exception
             print('Invalid field data in VLAN tag!')
             sys.exit(1)
 
@@ -303,6 +304,7 @@ class Frame:
         :param payload: new payload
         '''
         self._payload = payload
+        # TODO check whether commented out code can be removed
         ### Padding should be done by driver I guess
         #fr_len = len(self.get_bytes())
         #if fr_len < 64:
@@ -320,10 +322,10 @@ class Frame:
                'dst_addr': self._dst_addr,
                'ether_type': self._ether_type,
                'payload': self._payload}
-        if self._vlan_tag is not None:
-            dct['vlan_tag'] = self._vlan_tag.get_dict()
-        else:
+        if self._vlan_tag is None:
             dct['vlan_tag'] = None
+        else:
+            dct['vlan_tag'] = self._vlan_tag.get_dict()
         return dct
 
 
@@ -331,15 +333,13 @@ class Frame:
         '''
         Print Ethernet frame information
         '''
-        print('ETH source address  : ' + \
-              ':'.join(self._src_addr[0+x*2:2+x*2] for x in range(6)))
-        print('ETH dest. address   : ' + \
-              ':'.join(self._dst_addr[0+x*2:2+x*2] for x in range(6)))
+        print('ETH source address  : ' + self.src_addr)
+        print('ETH dest. address   : ' + self.dst_addr)
         if self._vlan_tag is not None:
             self._vlan_tag.info()
         print('ETH ethertype       : 0x' + format(self._ether_type, '04x'), \
               get_protocol_str(self._ether_type))
-        print('ETH payload length  : {}'.format(len(self._payload)))
+        print('ETH payload length  : {}'.format(len(self.payload)))
 
 
     def send(self, socket, mtu=1500):
@@ -349,13 +349,11 @@ class Frame:
         :param socket:
         :returns: Number of bytes sent
         '''
-        if  len(self._payload) > mtu:
-            raise MTUExceededException('{} Bytes'.format(len(self._payload)))
-        frame_data = struct.pack('!%ds' %
-                                 len(self.get_bytes()),
+        if len(self._payload) > mtu:
+            raise MTUExceededException('{} Bytes'.format(len(self.payload)))
+        frame_data = struct.pack('!{}s'.format(len(self.get_bytes())),
                                  self.get_bytes())
-        msg_size = socket.send(frame_data)
-        return msg_size
+        return socket.send(frame_data)
 
 
 class ArpMessage(Frame):
@@ -431,10 +429,10 @@ class ArpMessage(Frame):
                         + b'\x08\x00'
                         + b'\x06\x04'
                         + to_bytes(self._operation, 2)
-                        + bytes.fromhex(self._snd_hw_addr)
-                        + bytes.fromhex(ipv4_addr_encode(self._snd_ip_addr))
-                        + bytes.fromhex(self._tgt_hw_addr)
-                        + bytes.fromhex(ipv4_addr_encode(self._tgt_ip_addr)))
+                        + bytes.fromhex(self.snd_hw_addr)
+                        + bytes.fromhex(ipv4_addr_encode(self.snd_ip_addr))
+                        + bytes.fromhex(self.tgt_hw_addr)
+                        + bytes.fromhex(ipv4_addr_encode(self.tgt_ip_addr)))
 
         frame_data = {'dst_addr': arp_data['dst_addr'],
                       'src_addr': arp_data['src_addr'],
@@ -469,13 +467,13 @@ class ArpMessage(Frame):
         '''
         return ARP data as dictionary
         '''
-        return {'operation': self._operation,
-                'src_addr': self.__get_src_addr(),
-                'dst_addr': self.__get_dst_addr(),
-                'snd_hw_addr': self._snd_hw_addr,
-                'snd_ip_addr': self._snd_ip_addr,
-                'tgt_hw_addr': self._tgt_hw_addr,
-                'tgt_ip_addr': self._tgt_ip_addr}
+        return {'operation': self.operation,
+                'src_addr': self.src_addr,
+                'dst_addr': self.dst_addr,
+                'snd_hw_addr': self.snd_hw_addr,
+                'snd_ip_addr': self.snd_ip_addr,
+                'tgt_hw_addr': self.tgt_hw_addr,
+                'tgt_ip_addr': self.tgt_ip_addr}
 
 
     def __get_operation(self):
@@ -640,8 +638,8 @@ class EthernetHandler:
         Initialize frame with class attributes and empty payload
         Use to reset the initial state of the object
         '''
-        frame_data = {'src_addr': self._local_mac,
-                      'dst_addr': self._remote_mac,
+        frame_data = {'src_addr': self.local_mac,
+                      'dst_addr': self.remote_mac,
                       'ether_type': self._ether_type,
                       'vlan_tag': self._vlan_tag}
         self._frame = Frame(frame_data)
@@ -765,8 +763,8 @@ class EthernetHandler:
         try:
             frame_bytes = self._socket.recv(65536)
             frame = Frame.from_bytes(frame_bytes)
-            if frame.src_addr == self._remote_mac and \
-               frame.dst_addr == self._local_mac and \
+            if frame.src_addr == self.remote_mac and \
+               frame.dst_addr == self.local_mac and \
                frame.ether_type == self._ether_type:
                 if frame.vlan_tag is None and self._vlan_tag is None:
                     self._frame = frame
@@ -776,5 +774,4 @@ class EthernetHandler:
         except Exception as ex:
             if pass_on_error:
                 pass
-            else:
-                raise ex
+            raise ex
