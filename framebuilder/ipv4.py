@@ -889,8 +889,17 @@ class IPv4Handler(eth.EthernetHandler):
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
         '''
         frame_type = super().receive(pass_on_error)
+
         if frame_type == 0 and self.frame_in is not None:
             ip4_pk = IPv4Packet.from_frame(self.frame_in)
+
+            if self.local_ip is not None and \
+               self.local_ip != ip4_pk.dst_addr:
+                return False
+            if self.remote_ip is not None and \
+               self.remote_ip != ip4_pk.src_addr:
+                return False
+
             if ip4_pk.protocol != self._protocol:
                 return False
             # Fragmentation check
