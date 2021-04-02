@@ -832,8 +832,8 @@ class IPv4Handler(eth.EthernetHandler):
         or nothing suitable has been received
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
         '''
-        super().receive(pass_on_error)
-        if self.frame is not None:
+        addr = super().receive(pass_on_error)
+        if addr[2] == 0 and self.frame is not None:
             ip4_pk = IPv4Packet.from_frame(self.frame)
             if not (ip4_pk.src_addr == self._remote_ip and \
                     ip4_pk.dst_addr == self._local_ip and \
@@ -841,10 +841,6 @@ class IPv4Handler(eth.EthernetHandler):
                 return False
             # Fragmentation check
             if ip4_pk.dont_fragment():
-                self._nextpk_in = ip4_pk
-                return True
-            if not ip4_pk.more_fragments() and \
-               ip4_pk.total_length <= self._mtu:
                 self._nextpk_in = ip4_pk
                 return True
             frag_entry = self._frag_list.get(ip4_pk.identification, None)
@@ -873,14 +869,17 @@ class IPv4Handler(eth.EthernetHandler):
                 frag_entry['packet'].payload += add_payload
             frag_entry['written'].append((ip4_pk.frag_offset,
                     ip4_pk.total_length - ip4_pk.ihl * 4))
-            if not ip4_pk.more_fragments:
+            if not ip4_pk.more_fragments():
                 frag_entry['last_frag_rcvd'] = True
 
             self._frag_list[ip4_pk.identification] = frag_entry
 
             if frag_entry['last_frag_rcvd']:
                 if self.__packet_complete(ip4_pk.identification):
-                    self._nextpk_in = frag_entry['packet']
+                    pk = frag_entry['packet']
+                    pk.flags = 0
+                    pk.total_length = len(pk.payload) + pk.ihl * 4
+                    self._nextpk_in = pk
                     del self._frag_list[ip4_pk.identification]
                     return True            
         return False
