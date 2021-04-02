@@ -761,7 +761,7 @@ class EthernetHandler:
         '''
         self._frame = None
         try:
-            frame_bytes = self._socket.recv(65536)
+            frame_bytes, address = self._socket.recvfrom(65536)
             frame = Frame.from_bytes(frame_bytes)
             if frame.src_addr == self.remote_mac and \
                frame.dst_addr == self.local_mac and \
@@ -771,6 +771,7 @@ class EthernetHandler:
                 if self._vlan_tag is not None:
                     if frame.vlan_tag.vlan_id == self._vlan_tag['vlan_id']:
                         self._frame = frame
+            return address
         except Exception as ex:
             if pass_on_error:
                 pass
