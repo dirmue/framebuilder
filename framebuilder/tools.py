@@ -88,7 +88,6 @@ def _print_pkg_data(pkgdata, mode, bytes_per_row):
         print('+--------' + '+--' * bytes_per_row + '+')
 
     for byte in data:
-        bytes_cnt += 1
         chars = ' '
         if mode == 'hex':
             chars = byte.hex()
@@ -97,6 +96,7 @@ def _print_pkg_data(pkgdata, mode, bytes_per_row):
                 chars = byte.decode('latin_1')
         if bytes_cnt == 0:
             print('| 0x0000 |', end = '')
+        bytes_cnt += 1
         if bytes_cnt % bytes_per_row != 0:
             print(chars, end = '|')
         else:
