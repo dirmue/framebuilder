@@ -832,12 +832,10 @@ class IPv4Handler(eth.EthernetHandler):
         or nothing suitable has been received
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
         '''
-        addr = super().receive(pass_on_error)
-        if addr[2] == 0 and self.frame is not None:
+        frame_type = super().receive(pass_on_error)
+        if frame_type == 0 and self.frame is not None:
             ip4_pk = IPv4Packet.from_frame(self.frame)
-            if not (ip4_pk.src_addr == self._remote_ip and \
-                    ip4_pk.dst_addr == self._local_ip and \
-                    ip4_pk.protocol == self._protocol):
+            if ip4_pk.protocol != self._protocol:
                 return False
             # Fragmentation check
             if ip4_pk.dont_fragment():

@@ -1,6 +1,6 @@
 '''Module for TCP functions used by custompk'''
 
-from framebuilder import tools, errors, layer3
+from framebuilder import tools, errors, layer3, ipv4
 
 class TCPOption:
     '''
@@ -784,7 +784,7 @@ class TCPSegment(layer3.Base):
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
-class TCPConnection:
+class TCPHandler():
     '''
     A take on implementing basic custom TCP connection management
 

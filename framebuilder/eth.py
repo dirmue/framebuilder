@@ -587,7 +587,7 @@ class EthernetHandler:
     accessed via the frame attribute
     '''
 
-    def __init__(self, interface, remote_mac, ether_type=0x0800,
+    def __init__(self, interface, remote_mac=None, ether_type=None,
                  local_mac=None, vlan_tag=None, mtu=None, block=1, t_out=3.0):
         '''
         Initialize Ethernet handler
@@ -614,14 +614,17 @@ class EthernetHandler:
 
         self._interface = interface
         self._mtu = mtu
-        self._vlan_tag = vlan_tag
+        if vlan_tag is not None:
+            self._vlan_tag = VlanTag(vlan_tag)
+        else:
+            self._vlan_tag = None
 
         if is_valid_mac_address(local_mac):
             self._local_mac = local_mac
         else:
             raise InvalidMACAddrException
 
-        if is_valid_mac_address(remote_mac):
+        if is_valid_mac_address(remote_mac) or remote_mac is None:
             self._remote_mac = remote_mac
         else:
             raise InvalidMACAddrException
@@ -629,20 +632,20 @@ class EthernetHandler:
         self._ether_type = ether_type
         self._socket = create_socket(interface, blocking=block,
                                      timeout_sec=t_out)
-        self._frame = None
-        self.init_frame()
+        self._frame_out = None
+        self.init_frame_out()
+        self._frame_in = None
 
 
-    def init_frame(self):
+    def init_frame_out(self):
         '''
         Initialize frame with class attributes and empty payload
         Use to reset the initial state of the object
         '''
         frame_data = {'src_addr': self.local_mac,
                       'dst_addr': self.remote_mac,
-                      'ether_type': self._ether_type,
-                      'vlan_tag': self._vlan_tag}
-        self._frame = Frame(frame_data)
+                      'ether_type': self._ether_type}
+        self._frame_out = Frame(frame_data, self._vlan_tag)
 
 
     def __del__(self):
@@ -727,29 +730,29 @@ class EthernetHandler:
     socket = property(__get_socket)
 
 
-    def __get_frame(self):
+    def __get_frame_in(self):
         '''
-        Getter for frame
+        Getter for frame_in
         '''
-        return self._frame
+        return self._frame_in
 
-    def __set_frame(self, frame):
+    def __set_frame_out(self, frame):
         '''
-        Setter for frame
+        Setter for frame_out
         Allows for overriding addresses, ethertype, vlan settings
         '''
         if isinstance(frame, Frame):
-            self._frame = frame
+            self._frame_out = frame
 
-    frame = property(__get_frame, __set_frame)
+    frame = property(__get_frame_in, __set_frame_out)
 
 
     def send(self):
         '''
         Send data via an Ethernet frame
         '''
-        if self._frame is not None:
-            self._frame.send(self._socket, self._mtu)
+        if self._frame_out is not None:
+            self._frame_out.send(self._socket, self._mtu)
 
 
     def receive(self, pass_on_error=True):
@@ -759,19 +762,31 @@ class EthernetHandler:
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
                                      (may be useful with non-blocking sockets)
         '''
-        self._frame = None
+        self._frame_in = None
         try:
             frame_bytes, address = self._socket.recvfrom(65536)
             frame = Frame.from_bytes(frame_bytes)
-            if frame.src_addr == self.remote_mac and \
-               frame.dst_addr == self.local_mac and \
-               frame.ether_type == self._ether_type:
-                if frame.vlan_tag is None and self._vlan_tag is None:
+
+            if self.remote_mac is not None and \
+               self.remote_mac != frame.src_addr:
+                return None
+
+            if self.local_mac is not None and \
+               self.local_mac != frame.dst_addr:
+                return None
+
+            if self._ether_type is not None and \
+               self._ether_type != frame.ether_type:
+                return None
+
+            if frame.vlan_tag is None and self._vlan_tag is None:
+                self._frame_in = frame
+                return address[2]
+            if self._vlan_tag is not None and frame.vlan_tag is not None:
+                if frame.vlan_tag.vlan_id == self._vlan_tag.vlan_id:
                     self._frame = frame
-                if self._vlan_tag is not None:
-                    if frame.vlan_tag.vlan_id == self._vlan_tag['vlan_id']:
-                        self._frame = frame
-            return address
+                    return address[2]
+            return None
         except Exception as ex:
             if pass_on_error:
                 pass
