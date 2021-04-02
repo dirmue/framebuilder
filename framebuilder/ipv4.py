@@ -717,12 +717,17 @@ class IPv4Handler(eth.EthernetHandler):
         self._nextpk_out = None
         self.init_nextpk_out()
 
-        # fragment list for reassembly
-        # [(identification_1, [fragment_1, fragment_2, ..., fragment_n]),
-        #  (identification_2, [fragment_1, fragment_2, ..., fragment_n]),
-        #  ...
-        #  (identification_n, [fragment_1, fragment_2, ..., fragment_n])]
-        self._frag_list = []
+        # fragment dictionary for reassembly
+        # {
+        #   identification_1: {'written': [(ind, len)],
+        #                      'last_frag_rcvd': <bool>,
+        #                      'packet': <IPv4Packet>},
+        #   identification_2: {'written': [(ind, len)], 'packet': <IPv4Packet>},
+        #   identification_3: {'written': [(ind, len)], 'packet': <IPv4Packet>},
+        #   ...
+        #   identification_n: {'written': [(ind, len)], 'packet': <IPv4Packet>}
+        # }
+        self._frag_list = {}
 
         super().__init__(interface, dst_mac, 0x0800, src_mac, vlan_tag, None,
                          block, t_out)
@@ -804,24 +809,21 @@ class IPv4Handler(eth.EthernetHandler):
             super().send()
 
 
-    def __try_reassembly(self, identification):
+    def __packet_complete(self, identification):
         '''
-        Try to reassemble fragments with the receipt of every new fragment.
+        Check if all fragments of a fragmented packet have arrived. Only call
+        if last fragment has arrived
         '''
-        tmp_payload = b''
-        for f_lst in self._frag_list:
-            if f_lst[0] == identification:
-                for frag in f_lst[1]:
-                    tmp_payload += frag.payload
-                if len(tmp_payload) == f_lst[1][0].total_length \
-                                       - f_lst[1][0].ihl * 4:
-                    self._nextpk_in = f_lst[1][0]
-                    self._nextpk_in.payload = tmp_payload
-                    return True
-                break
-        return False
-
-
+        offset_list = self._frag_list[identification]['written']
+        offset_list.sort(key=lambda item: item[0])
+        expected_index = 0
+        for item in offset_list:
+            if item[0] != expected_index:
+                return False
+            expected_index += item[1] / 8
+        return True
+            
+    
     def receive(self, pass_on_error=True):
         '''
         Receive next packet that belongs to this connection, i.e. either set
@@ -845,18 +847,40 @@ class IPv4Handler(eth.EthernetHandler):
                ip4_pk.total_length <= self._mtu:
                 self._nextpk_in = ip4_pk
                 return True
-            for f_lst in self._frag_list:
-                if f_lst[0] == ip4_pk.identification:
-                    # Fragments could arrive out of order; order them as
-                    # they arrive
-                    largest_offset = True
-                    for index in range(len(f_lst[1])):
-                        if f_lst[1][index].frag_offset > ip4_pk.frag_offset:
-                            f_lst[1].insert(index, ip4_pk)
-                            largest_offset = False
-                    if largest_offset:
-                        f_lst[1].append(ip4_pk)
-                    return self.__try_reassembly(ip4_pk.identification)
-            # very first fragment
-            self._frag_list.append((ip4_pk.identification, [ip4_pk]))
+            frag_entry = self._frag_list.get(ip4_pk.identification, None)
+            if frag_entry is None:
+                new_pk = ip4_pk
+                new_pk.is_fragment = True
+                new_pk.payload = b'\x00' * ip4_pk.frag_offset * 8 \
+                                 + ip4_pk.payload
+
+                self._frag_list[ip4_pk.identification] = {
+                            'written': [(ip4_pk.frag_offset,
+                                         ip4_pk.total_length - ip4_pk.ihl * 4)],
+                            'last_frag_rcvd': not ip4_pk.more_fragments(),
+                            'packet': new_pk
+                        }
+                return False
+            if len(frag_entry['packet'].payload) > ip4_pk.frag_offset * 8:
+                frag_entry['packet'].payload = tools.set_bytes_at(
+                        frag_entry['packet'].payload,
+                        ip4_pk.payload,
+                        ip4_pk.frag_offset * 8)
+            else:
+                add_payload = b'\x00' * (ip4_pk.frag_offset * 8 \
+                        - len(frag_entry['packet'].payload)) \
+                        + ip4_pk.payload
+                frag_entry['packet'].payload += add_payload
+            frag_entry['written'].append((ip4_pk.frag_offset,
+                    ip4_pk.total_length - ip4_pk.ihl * 4))
+            if not ip4_pk.more_fragments:
+                frag_entry['last_frag_rcvd'] = True
+
+            self._frag_list[ip4_pk.identification] = frag_entry
+
+            if frag_entry['last_frag_rcvd']:
+                if self.__packet_complete(ip4_pk.identification):
+                    self._nextpk_in = frag_entry['packet']
+                    del self._frag_list[ip4_pk.identification]
+                    return True            
         return False
