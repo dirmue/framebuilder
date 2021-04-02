@@ -115,7 +115,7 @@ class IPv4Packet:
     DS (Differentiated Service) Field
     '''
 
-    def __init__(self, ip4_data=None):
+    def __init__(self, ip4_data=None, is_fragment=False):
         '''
         Initialize IPv4 packet
         :param ip4_data: Dictionary containing packet information as follows
@@ -135,6 +135,7 @@ class IPv4Packet:
             'options': []<dict> List of IPv4 option dictionaries
             'payload': <bytes>
         }
+        :param isfragment: <bool> True if packet is a fragment
         '''
 
         if ip4_data is None:
@@ -164,6 +165,7 @@ class IPv4Packet:
         self._protocol = ip4_data.get('protocol', 0) & 0xff
         self._checksum = ip4_data.get('checksum', 0) & 0xffff
         self._payload = ip4_data.get('payload', b'')
+        self.is_fragment = is_fragment
         self._options = []
         if ip4_data.get('options', None) is not None:
             for opt in ip4_data['options']:
@@ -215,6 +217,8 @@ class IPv4Packet:
                     ip4_data['options'].append(opt)
                     index += olength
         ip4_data['payload'] = ip4_bytes[ip4_data['ihl']*4:]
+        if ip4_data['total_length'] > len(ip4_data['payload']):
+            return cls(ip4_data, True)
         return cls(ip4_data)
 
 

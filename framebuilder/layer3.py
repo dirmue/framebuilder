@@ -48,11 +48,13 @@ class Base:
                                              self.get_bytes() +
                                              b'\x00' * (len(self._payload) % 2))
 
+
     def verify_checksum(self):
         '''
         Verify Layer3 checksum
         '''
         return self._checksum == 0xffff
+
 
     def encapsulate(self, packet):
         '''
