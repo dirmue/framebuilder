@@ -1,6 +1,8 @@
 '''Module for IPv4 functions used by custompk'''
 
 from socket import inet_aton, inet_ntoa
+from copy import copy
+from math import ceil
 from framebuilder.errors import InvalidIPv4AddrException, \
                                 IncompleteIPv4HeaderException
 from framebuilder.defs import get_iana_protocol_str
@@ -527,6 +529,13 @@ class IPv4Packet:
         self._flags |= 0b010
 
 
+    def unset_df_flag(self):
+        '''
+        Set the don't fragment flag
+        '''
+        self._flags &= 0b101
+
+
     def more_fragments(self):
         '''
         Is the don't fragment flag set?
@@ -539,6 +548,13 @@ class IPv4Packet:
         Set the more fragments flag
         '''
         self._flags |= 0b001
+
+
+    def unset_mf_flag(self):
+        '''
+        Set the more fragments flag
+        '''
+        self._flags &= 0b110
 
 
     def get_flag_string(self):
@@ -728,6 +744,7 @@ class IPv4Handler(eth.EthernetHandler):
         #   identification_n: {'written': [(ind, len)], 'packet': <IPv4Packet>}
         # }
         self._frag_list = {}
+        self._next_id = 0
 
         super().__init__(interface, dst_mac, 0x0800, src_mac, vlan_tag, None,
                          block, t_out)
@@ -756,6 +773,20 @@ class IPv4Handler(eth.EthernetHandler):
         self._remote_ip = remote_ip
 
     remote_ip = property(__get_remote_ip, __set_remote_ip)
+
+
+    def __get_next_id(self):
+        '''
+        Getter for next identification
+        '''
+        nxt_id = self._next_id
+        if self._next_id < 65535:
+            self._next_id += 1
+        else:
+            self._next_id = 0
+        return nxt_id
+
+    next_id = property(__get_next_id)
 
 
     def __get_local_ip(self):
@@ -804,9 +835,34 @@ class IPv4Handler(eth.EthernetHandler):
         '''
         Send data via an IPv4Packet
         '''
-        if self._nextpk_out is not None:
-            self._nextpk_out.encapsulate(self._frame)
+        if self._nextpk_out is None:
+            return False
+
+        #TODO Check total length calculation!
+        pay_len = len(self._nextpk_out.payload)
+        pk_len = self._nextpk_out.ihl * 4 + pay_len
+        if pk_len <= self.mtu:
+            self._nextpk_out.encapsulate(self.frame_out)
             super().send()
+            return True
+        
+        frag = copy(self.nextpk_out)
+        frag.identification = self.next_id
+        frag.set_mf_flag()
+
+        chunk_sz = ((self.mtu - frag.ihl * 4) // 8) * 8
+        chunk_cnt = ceil(pay_len / chunk_sz)
+        for i in range(chunk_cnt):
+            offset = i * chunk_sz
+            frag.frag_offset = offset // 8
+            if i < chunk_cnt - 1:
+                frag.payload = self.nextpk_out.payload[offset:offset + chunk_sz]
+            else:
+                frag.unset_mf_flag()
+                frag.payload = self.nextpk_out.payload[offset:]
+            frag.encapsulate(self.frame_out)
+            super().send()
+        return True
 
 
     def __packet_complete(self, identification):
@@ -822,8 +878,8 @@ class IPv4Handler(eth.EthernetHandler):
                 return False
             expected_index += item[1] / 8
         return True
-            
-    
+
+
     def receive(self, pass_on_error=True):
         '''
         Receive next packet that belongs to this connection, i.e. either set
@@ -833,8 +889,8 @@ class IPv4Handler(eth.EthernetHandler):
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
         '''
         frame_type = super().receive(pass_on_error)
-        if frame_type == 0 and self.frame is not None:
-            ip4_pk = IPv4Packet.from_frame(self.frame)
+        if frame_type == 0 and self.frame_in is not None:
+            ip4_pk = IPv4Packet.from_frame(self.frame_in)
             if ip4_pk.protocol != self._protocol:
                 return False
             # Fragmentation check
@@ -865,6 +921,7 @@ class IPv4Handler(eth.EthernetHandler):
                         - len(frag_entry['packet'].payload)) \
                         + ip4_pk.payload
                 frag_entry['packet'].payload += add_payload
+
             frag_entry['written'].append((ip4_pk.frag_offset,
                     ip4_pk.total_length - ip4_pk.ihl * 4))
             if not ip4_pk.more_fragments():
@@ -879,5 +936,5 @@ class IPv4Handler(eth.EthernetHandler):
                     pk.total_length = len(pk.payload) + pk.ihl * 4
                     self._nextpk_in = pk
                     del self._frag_list[ip4_pk.identification]
-                    return True            
+                    return True
         return False

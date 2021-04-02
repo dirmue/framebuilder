@@ -736,15 +736,17 @@ class EthernetHandler:
         '''
         return self._frame_in
 
-    def __set_frame_out(self, frame):
+    frame_in = property(__get_frame_in)
+    
+
+    def __get_frame_out(self):
         '''
         Setter for frame_out
         Allows for overriding addresses, ethertype, vlan settings
         '''
-        if isinstance(frame, Frame):
-            self._frame_out = frame
+        return self._frame_out
 
-    frame = property(__get_frame_in, __set_frame_out)
+    frame_out = property(__get_frame_out)
 
 
     def send(self):
@@ -784,7 +786,7 @@ class EthernetHandler:
                 return address[2]
             if self._vlan_tag is not None and frame.vlan_tag is not None:
                 if frame.vlan_tag.vlan_id == self._vlan_tag.vlan_id:
-                    self._frame = frame
+                    self._frame_in = frame
                     return address[2]
             return None
         except Exception as ex:
