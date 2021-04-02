@@ -1,9 +1,9 @@
 '''Module for UDP functions used by custompk'''
 
-from framebuilder import tools, layer3
+from framebuilder import tools, layer4
 
 
-class UDPDatagram(layer3.Base):
+class UDPDatagram(layer4.Base):
     '''
     Creata a UDP datagram according to RFC 768
 

@@ -3,7 +3,7 @@ from framebuilder import tools
 
 class Base:
     '''
-    Layer3 base class for shared logic
+    Layer4 base class for shared logic
     '''
     def __init__(self, src_port, dst_port, proto, pseudo_header, payload, checksum):
         self._src_port = src_port
@@ -23,7 +23,7 @@ class Base:
 
     def create_pseudo_header(self, packet):
         '''
-        Create the layer 3 pseudo header and update its length field
+        Create the layer 4 pseudo header and update its length field
         :param packet: Layer 3 packet object
         '''
         self._pseudo_header = packet.create_pseudo_header()
@@ -41,7 +41,7 @@ class Base:
 
     def update_checksum(self):
         '''
-        Update Layer3 checksum
+        Update Layer4 checksum
         '''
         self._checksum = 0
         self._checksum = tools.calc_chksum(self._pseudo_header +
@@ -51,7 +51,7 @@ class Base:
 
     def verify_checksum(self):
         '''
-        Verify Layer3 checksum
+        Verify Layer4 checksum
         '''
         return self._checksum == 0xffff
 

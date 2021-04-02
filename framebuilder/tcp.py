@@ -1,6 +1,6 @@
 '''Module for TCP functions used by custompk'''
 
-from framebuilder import tools, errors, layer3, ipv4
+from framebuilder import tools, errors, layer4, ipv4
 
 class TCPOption:
     '''
@@ -102,7 +102,7 @@ class TCPOption:
                 'option_data': self._odata}
 
 
-class TCPSegment(layer3.Base):
+class TCPSegment(layer4.Base):
     '''
     Create a TCP segment according to RFC 793
 
