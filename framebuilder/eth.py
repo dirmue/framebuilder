@@ -1,8 +1,6 @@
 '''Module for layer 2 functions'''
 
 import struct
-import sys
-
 from framebuilder.tools import to_bytes, ipv4_addr_encode, \
                                is_valid_mac_address, \
                                get_bytes_at, get_value_at, \
@@ -37,9 +35,7 @@ class VlanTag:
             self._dei = vlan_tag.get('vlan_dei', 0) & 0b1
             self._tpi = 0x8100
         except ValueError:
-            # TODO Do not use sys.exit in library code, raise an exception
             print('Invalid field data in VLAN tag!')
-            sys.exit(1)
 
 
     @classmethod
@@ -304,12 +300,6 @@ class Frame:
         :param payload: new payload
         '''
         self._payload = payload
-        # TODO check whether commented out code can be removed
-        ### Padding should be done by driver I guess
-        #fr_len = len(self.get_bytes())
-        #if fr_len < 64:
-        #    pad_len = 64 - fr_len
-        #    self._payload += b'\x00' * pad_len
 
     payload = property(__get_payload, __set_payload)
 
@@ -582,9 +572,7 @@ class EthernetHandler:
     '''
     Represents a relationship of two L2 endpoints, defined by an interface, a
     local Ethernet address and a remote Ethernet address. Its purpose is to
-    act as a parent class for and handle packets from upper layers.
-    The latest processed frame (ragardless of incoming or outgoing) can be
-    accessed via the frame attribute
+    act as a parent class for upper layers.
     '''
 
     def __init__(self, interface, remote_mac=None, ether_type=None,
@@ -596,11 +584,7 @@ class EthernetHandler:
         :param remote_mac: <str> remote MAC address
         :param ethertype: <int> upper layer protocol number
         :param local_mac: <str> local MAC address (optional)
-        :param vlan_tag: <dict> VLAN tag {
-                                    'vlan_id': <int> VLAN identifier,
-                                    'vlan_pcp': <int> priority code point,
-                                    'vlan_dei': <int> drop eligible indicator
-                                }
+        :param vlan_tag: <VlanTag> VLAN tag object
         :param mtu: <int> maximum transfer unit; None = auto-detect
         :param block: <int> make socket blocking (1), non-blocking (0) or
                             non-blocking with timeout (2)
@@ -614,10 +598,7 @@ class EthernetHandler:
 
         self._interface = interface
         self._mtu = mtu
-        if vlan_tag is not None:
-            self._vlan_tag = VlanTag(vlan_tag)
-        else:
-            self._vlan_tag = None
+        self._vlan_tag = vlan_tag
 
         if is_valid_mac_address(local_mac):
             self._local_mac = local_mac
@@ -632,20 +613,16 @@ class EthernetHandler:
         self._ether_type = ether_type
         self._socket = create_socket(interface, blocking=block,
                                      timeout_sec=t_out)
-        self._frame_out = None
-        self.init_frame_out()
-        self._frame_in = None
 
 
-    def init_frame_out(self):
+    def init_frame(self):
         '''
         Initialize frame with class attributes and empty payload
-        Use to reset the initial state of the object
         '''
         frame_data = {'src_addr': self.local_mac,
                       'dst_addr': self.remote_mac,
                       'ether_type': self._ether_type}
-        self._frame_out = Frame(frame_data, self._vlan_tag)
+        return Frame(frame_data, self._vlan_tag)
 
 
     def __del__(self):
@@ -730,31 +707,13 @@ class EthernetHandler:
     socket = property(__get_socket)
 
 
-    def __get_frame_in(self):
-        '''
-        Getter for frame_in
-        '''
-        return self._frame_in
-
-    frame_in = property(__get_frame_in)
-    
-
-    def __get_frame_out(self):
-        '''
-        Setter for frame_out
-        Allows for overriding addresses, ethertype, vlan settings
-        '''
-        return self._frame_out
-
-    frame_out = property(__get_frame_out)
-
-
-    def send(self):
+    def send(self, packet):
         '''
         Send data via an Ethernet frame
         '''
-        if self._frame_out is not None:
-            self._frame_out.send(self._socket, self._mtu)
+        frame = self.init_frame()
+        packet.encapsulate(frame)
+        return frame.send(self._socket, self._mtu)
 
 
     def receive(self, pass_on_error=True):
@@ -764,30 +723,29 @@ class EthernetHandler:
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
                                      (may be useful with non-blocking sockets)
         '''
-        self._frame_in = None
         try:
-            frame_bytes, address = self._socket.recvfrom(65536)
+            frame_bytes, addr_info = self._socket.recvfrom(65536)
+            frame_type = addr_info[2]
             frame = Frame.from_bytes(frame_bytes)
 
             if self.remote_mac is not None and \
                self.remote_mac != frame.src_addr:
-                return None
+                return None, frame_type
 
             if self.local_mac is not None and \
                self.local_mac != frame.dst_addr:
-                return None
+                return None, frame_type
 
             if self._ether_type is not None and \
                self._ether_type != frame.ether_type:
-                return None
+                return None, frame_type
 
             if frame.vlan_tag is None and self._vlan_tag is None:
-                self._frame_in = frame
-                return address[2]
+                return frame, frame_type
+
             if self._vlan_tag is not None and frame.vlan_tag is not None:
                 if frame.vlan_tag.vlan_id == self._vlan_tag.vlan_id:
-                    self._frame_in = frame
-                    return address[2]
+                    return frame, frame_type
             return None
         except Exception as ex:
             if pass_on_error:

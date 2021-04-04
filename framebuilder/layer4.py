@@ -64,6 +64,7 @@ class Base:
         self.create_pseudo_header(packet)
         self.update_checksum()
         packet.payload = self.get_bytes()
+        packet.update_ihl_len_cks()
 
 
     def __get_src_port(self):

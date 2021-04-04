@@ -2,6 +2,7 @@
 
 from socket import inet_aton, inet_ntoa
 from copy import copy
+from random import randrange
 from math import ceil
 from framebuilder.errors import InvalidIPv4AddrException, \
                                 IncompleteIPv4HeaderException
@@ -156,16 +157,16 @@ class IPv4Packet:
         else:
             raise InvalidIPv4AddrException
 
-        self._version = ip4_data.get('version', 4) & 0xf
-        self._ihl = ip4_data.get('ihl', 5) & 0xf
-        self._tos = ip4_data.get('tos', 0) & 0xff
-        self._total_length = ip4_data.get('total_length', 0) & 0xffff
-        self._identification = ip4_data.get('identification', 0) & 0xffff
-        self._flags = ip4_data.get('flags', 0) & 0b111
-        self._frag_offset = ip4_data.get('frag_offset', 0) & 0b1111111111111
-        self._ttl = ip4_data.get('ttl', MAX_TTL) & 0xff
-        self._protocol = ip4_data.get('protocol', 0) & 0xff
-        self._checksum = ip4_data.get('checksum', 0) & 0xffff
+        self._version = ip4_data.get('version', 4)
+        self._ihl = ip4_data.get('ihl', 5)
+        self._tos = ip4_data.get('tos', 0)
+        self._total_length = ip4_data.get('total_length', None)
+        self._identification = ip4_data.get('identification', 0)
+        self._flags = ip4_data.get('flags', 0)
+        self._frag_offset = ip4_data.get('frag_offset', 0)
+        self._ttl = ip4_data.get('ttl', MAX_TTL)
+        self._protocol = ip4_data.get('protocol', 0)
+        self._checksum = ip4_data.get('checksum', None)
         self._payload = ip4_data.get('payload', b'')
         self.is_fragment = is_fragment
         self._options = []
@@ -271,25 +272,25 @@ class IPv4Packet:
         '''
         returns IPv4 header bytes
         '''
-        ver_ihl = (self._version << 4) + self._ihl
-        flags_off = (self._flags << 13) + self._frag_offset
+        ver_ihl = (self.version << 4) + self.ihl
+        flags_off = (self.flags << 13) + self.frag_offset
 
         options = b''
-        for opt in self._options:
+        for opt in self.options:
             options += opt.get_bytes()
         options += (len(options) % 4) * b'\x00'
         return bytes(tools.to_bytes(ver_ihl, 1)
-                     + tools.to_bytes(self._tos, 1)
-                     + tools.to_bytes(self._total_length, 2)
-                     + tools.to_bytes(self._identification, 2)
+                     + tools.to_bytes(self.tos, 1)
+                     + tools.to_bytes(self.total_length, 2)
+                     + tools.to_bytes(self.identification, 2)
                      + tools.to_bytes(flags_off, 2)
-                     + tools.to_bytes(self._ttl, 1)
-                     + tools.to_bytes(self._protocol, 1)
-                     + tools.to_bytes(self._checksum, 2)
-                     + inet_aton(self._src_addr)
-                     + inet_aton(self._dst_addr)
+                     + tools.to_bytes(self.ttl, 1)
+                     + tools.to_bytes(self.protocol, 1)
+                     + tools.to_bytes(self.checksum, 2)
+                     + inet_aton(self.src_addr)
+                     + inet_aton(self.dst_addr)
                      + options
-                     + self._payload)
+                     + self.payload)
 
 
     def encapsulate(self, frame):
@@ -297,7 +298,6 @@ class IPv4Packet:
         Encapsulate IPv4 packet in an Ethernet frame
         :param frame: Ethernet frame
         '''
-        self.update_ihl_len_cks()
         frame.payload = self.get_bytes()
 
 
@@ -314,6 +314,7 @@ class IPv4Packet:
         '''
         if tools.is_valid_ipv4_address(src_addr):
             self._src_addr = src_addr
+            self._checksum = None
         else:
             raise InvalidIPv4AddrException
 
@@ -333,6 +334,7 @@ class IPv4Packet:
         '''
         if tools.is_valid_ipv4_address(dst_addr):
             self._dst_addr = dst_addr
+            self._checksum = None
         else:
             raise InvalidIPv4AddrException
 
@@ -351,6 +353,7 @@ class IPv4Packet:
         Setter version
         '''
         self._version = version & 0xf
+        self._checksum = None
 
     version = property(__get_version, __set_version)
 
@@ -367,6 +370,7 @@ class IPv4Packet:
         Setter IHL
         '''
         self._ihl = ihl & 0xf
+        self._checksum = None
 
     ihl = property(__get_ihl, __set_ihl)
 
@@ -383,6 +387,7 @@ class IPv4Packet:
         Setter TOS
         '''
         self._tos = tos & 0xff
+        self._checksum = None
 
     tos = property(__get_tos, __set_tos)
 
@@ -391,6 +396,8 @@ class IPv4Packet:
         '''
         Getter total length
         '''
+        if self._total_length is None:
+            self.update_ihl_len_cks()
         return self._total_length
 
 
@@ -398,7 +405,8 @@ class IPv4Packet:
         '''
         Setter total length
         '''
-        self._total_length = total_length & 0xffff
+        self._total_length = total_length
+        self._checksum = None
 
     total_length = property(__get_total_length, __set_total_length)
 
@@ -415,6 +423,7 @@ class IPv4Packet:
         Setter identification
         '''
         self._identification = identification & 0xffff
+        self._checksum = None
 
     identification = property(__get_identification, __set_identification)
 
@@ -431,6 +440,7 @@ class IPv4Packet:
         Setter flags
         '''
         self._flags = flags & 0b111
+        self._checksum = None
 
     flags = property(__get_flags, __set_flags)
 
@@ -447,6 +457,7 @@ class IPv4Packet:
         Setter fragment offset
         '''
         self._frag_offset = frag_offset & 0b1111111111111
+        self._checksum = None
 
     frag_offset = property(__get_frag_offset, __set_frag_offset)
 
@@ -463,6 +474,7 @@ class IPv4Packet:
         Setter TTL
         '''
         self._ttl = ttl & 0xff
+        self._checksum = None
 
     ttl = property(__get_ttl, __set_ttl)
 
@@ -479,6 +491,7 @@ class IPv4Packet:
         Setter protocol
         '''
         self._protocol = protocol & 0xff
+        self._checksum = None
 
     protocol = property(__get_protocol, __set_protocol)
 
@@ -487,6 +500,8 @@ class IPv4Packet:
         '''
         Getter checksum
         '''
+        if self._checksum is None:
+            self.update_ihl_len_cks()
         return self._checksum
 
 
@@ -511,50 +526,55 @@ class IPv4Packet:
         Setter options
         '''
         self._options = options
+        self._checksum = None
+        self._ihl = None
+        self._total_length = None
 
     options = property(__get_options, __set_options)
 
 
-    def dont_fragment(self):
+    def __get_df_flag(self):
         '''
-        Is the don't fragment flag set?
+        Get don't fragment flag
         '''
-        return bool(self._flags & 0b010)
+        return self._flags >> 1 & 1
 
 
-    def set_df_flag(self):
+    def __set_df_flag(self, f_val):
         '''
         Set the don't fragment flag
         '''
-        self._flags |= 0b010
+        pos = 2
+        if self.__get_df_flag() == 0 and f_val & 1 == 1:
+            self._flags += pos
+            self._checksum = None
+        if self.__get_df_flag() == 1 and f_val & 1 == 0:
+            self._flags -= pos
+            self._checksum = None
+
+    df_flag = property(__get_df_flag, __set_df_flag)
 
 
-    def unset_df_flag(self):
+    def __get_mf_flag(self):
         '''
-        Set the don't fragment flag
+        Get more fragments flag
         '''
-        self._flags &= 0b101
+        return self._flags & 1
 
 
-    def more_fragments(self):
-        '''
-        Is the don't fragment flag set?
-        '''
-        return bool(self._flags & 0b001)
-
-
-    def set_mf_flag(self):
-        '''
-        Set the more fragments flag
-        '''
-        self._flags |= 0b001
-
-
-    def unset_mf_flag(self):
+    def __set_mf_flag(self, f_val):
         '''
         Set the more fragments flag
         '''
-        self._flags &= 0b110
+        pos = 1
+        if self.__get_mf_flag() == 0 and f_val & 1 == 1:
+            self._flags += pos
+            self._checksum = None
+        if self.__get_mf_flag() == 1 and f_val & 1 == 0:
+            self._flags -= pos
+            self._checksum = None
+
+    mf_flag = property(__get_mf_flag, __set_mf_flag)
 
 
     def get_flag_string(self):
@@ -578,27 +598,24 @@ class IPv4Packet:
         return flag_str
 
 
-    def info(self, calc_cs=False):
+    def info(self):
         '''
         Print IPv4 header information
-        :param calc_cs: <bool> Calculate checkum?
         '''
-        if calc_cs:
-            self.update_ihl_len_cks()
-        print('IP4 version         : ' + str(self._version))
-        print('IP4 header length   : ' + str(self._ihl * 4), 'Bytes')
-        print('IP4 time to live    : ' + str(self._ttl))
-        print('IP4 source address  : ' + self._src_addr)
-        print('IP4 dest. address   : ' + self._dst_addr)
-        print('IP4 total length    : ' + str(self._total_length), 'Bytes')
-        print('IP4 protocol number : ' + str(self._protocol), \
-                                         get_iana_protocol_str(self._protocol))
+        print('IP4 version         : ' + str(self.version))
+        print('IP4 header length   : ' + str(self.ihl * 4), 'Bytes')
+        print('IP4 time to live    : ' + str(self.ttl))
+        print('IP4 source address  : ' + self.src_addr)
+        print('IP4 dest. address   : ' + self.dst_addr)
+        print('IP4 total length    : ' + str(self.total_length), 'Bytes')
+        print('IP4 protocol number : ' + str(self.protocol), \
+                                         get_iana_protocol_str(self.protocol))
         print('IP4 flags           : ' + self.get_flag_string())
-        print('IP4 identification  : ' + str(self._identification))
-        print('IP4 fragment Offset : ' + str(self._frag_offset))
-        print('IP4 checksum        : 0x' + format(self._checksum, '04x'))
+        print('IP4 identification  : ' + str(self.identification))
+        print('IP4 fragment Offset : ' + str(self.frag_offset))
+        print('IP4 checksum        : 0x' + format(self.checksum, '04x'))
         opt_count = 1
-        for opt in self._options:
+        for opt in self.options:
             print('IP4 option #{}'.format(opt_count))
             opt.info()
             opt_count += 1
@@ -623,6 +640,9 @@ class IPv4Packet:
         o_data['option_data'] = bytes(tools.to_bytes(o_pointer, 1)
                                       + o_recrt_field)
         self._options.append(IPv4Option(o_data))
+        self._ihl = None
+        self._checksum = None
+        self._total_length = None
 
 
     def add_timestamp_option(self, entries=4):
@@ -642,6 +662,9 @@ class IPv4Packet:
                                       + tools.to_bytes(o_oflw_flg, 1)
                                       + o_its_field)
         self._options.append(IPv4Option(o_data))
+        self._ihl = None
+        self._checksum = None
+        self._total_length = None
 
 
     @classmethod
@@ -656,11 +679,11 @@ class IPv4Packet:
         '''
         Returns a pseudo header for UDP and TCP checksum calculation
         '''
-        return bytes(inet_aton(self._src_addr)
-                     + inet_aton(self._dst_addr)
+        return bytes(inet_aton(self.src_addr)
+                     + inet_aton(self.dst_addr)
                      + b'\x00'
-                     + tools.to_bytes(self._protocol, 1)
-                     + tools.to_bytes(len(self._payload), 2))
+                     + tools.to_bytes(self.protocol, 1)
+                     + tools.to_bytes(len(self.payload), 2))
 
 
     def __set_payload(self, payload):
@@ -668,6 +691,8 @@ class IPv4Packet:
         Setter for Payload
         '''
         self._payload = payload
+        self._checksum = None
+        self._total_length = None
 
 
     def __get_payload(self):
@@ -687,18 +712,13 @@ class IPv4Handler(eth.EthernetHandler):
     The current outbound packet is stored in nextpk_out
     '''
 
-    def __init__(self, remote_ip, proto=6, local_ip=None, vlan_tag=None,
-                 block=1, t_out=3.0):
+    def __init__(self, remote_ip=None, proto=6, local_ip=None, block=1,
+                 t_out=3.0):
         '''
         Initialize IPv4Handler
         :param remote_ip: <str> IP address of the remote host
         :param proto: <int> protocol id of payload (default 6=TCP)
         :param local_ip: <str> local IP address (None=auto)
-        :param vlan_tag: <dict> VLAN tag {
-                                    'vlan_id': <int> VLAN identifier,
-                                    'vlan_pcp': <int> priority code point,
-                                    'vlan_dei': <int> drop eligible indicator
-                                }
         :param block: <int> make socket blocking (1), non-blocking (0) or
                             non-blocking with timeout (2)
         :param t_out: <float> set socket timeout in seconds
@@ -729,35 +749,29 @@ class IPv4Handler(eth.EthernetHandler):
                     dst_mac = n_entry['lladdr']
                     break
         self._protocol = proto
-        self._nextpk_in = None
-        self._nextpk_out = None
-        self.init_nextpk_out()
 
         # fragment dictionary for reassembly
         # {
         #   identification_1: {'written': [(ind, len)],
         #                      'last_frag_rcvd': <bool>,
         #                      'packet': <IPv4Packet>},
-        #   identification_2: {'written': [(ind, len)], 'packet': <IPv4Packet>},
-        #   identification_3: {'written': [(ind, len)], 'packet': <IPv4Packet>},
-        #   ...
-        #   identification_n: {'written': [(ind, len)], 'packet': <IPv4Packet>}
+        #   identification_2: ...
         # }
         self._frag_list = {}
-        self._next_id = 0
+        self._next_id = randrange(65536)
 
-        super().__init__(interface, dst_mac, 0x0800, src_mac, vlan_tag, None,
+        super().__init__(interface, dst_mac, 0x0800, src_mac, None, None,
                          block, t_out)
 
 
-    def init_nextpk_out(self):
+    def init_packet(self):
         '''
         Initialize nextpk_out with local and remote IP address
         '''
         ip4_data = {'protocol': self._protocol,
                     'src_addr': self._local_ip,
                     'dst_addr': self._remote_ip}
-        self._nextpk_out = IPv4Packet(ip4_data)
+        return IPv4Packet(ip4_data)
 
 
     def __get_remote_ip(self):
@@ -779,12 +793,12 @@ class IPv4Handler(eth.EthernetHandler):
         '''
         Getter for next identification
         '''
-        nxt_id = self._next_id
+        next_id = self._next_id
         if self._next_id < 65535:
             self._next_id += 1
         else:
             self._next_id = 0
-        return nxt_id
+        return next_id
 
     next_id = property(__get_next_id)
 
@@ -813,56 +827,39 @@ class IPv4Handler(eth.EthernetHandler):
     protocol = property(__get_protocol)
 
 
-    def __get_nextpk_out(self):
+    def send(self, dgram, dont_frag=False):
         '''
-        Getter for nextpk_out
+        Send datagram via an IPv4Packet
+        :param dgram: datagram
+        :param dont_frag: set DF flag?
         '''
-        return self._nextpk_out
+        bytes_sent = 0
+        packet = self.init_packet()
+        dgram.encapsulate(packet)
+        if packet.total_length <= self.mtu:
+            packet.df_flag = 1 if dont_frag else 0
+            bytes_sent = super().send(packet) - packet.ihl * 4
+            return bytes_sent
 
-    nextpk_out = property(__get_nextpk_out)
+        if dont_frag:
+            return 0
 
-
-    def __get_nextpk_in(self):
-        '''
-        Getter for nextpk_in
-        '''
-        return self._nextpk_in
-
-    nextpk_in = property(__get_nextpk_in)
-
-
-    def send(self):
-        '''
-        Send data via an IPv4Packet
-        '''
-        if self._nextpk_out is None:
-            return False
-
-        #TODO Check total length calculation!
-        pay_len = len(self._nextpk_out.payload)
-        pk_len = self._nextpk_out.ihl * 4 + pay_len
-        if pk_len <= self.mtu:
-            self._nextpk_out.encapsulate(self.frame_out)
-            super().send()
-            return True
-        
-        frag = copy(self.nextpk_out)
+        frag = copy(packet)
         frag.identification = self.next_id
-        frag.set_mf_flag()
+        frag.mf_flag = 1
 
         chunk_sz = ((self.mtu - frag.ihl * 4) // 8) * 8
-        chunk_cnt = ceil(pay_len / chunk_sz)
+        chunk_cnt = ceil(len(packet.payload) / chunk_sz)
         for i in range(chunk_cnt):
             offset = i * chunk_sz
             frag.frag_offset = offset // 8
             if i < chunk_cnt - 1:
-                frag.payload = self.nextpk_out.payload[offset:offset + chunk_sz]
+                frag.payload = packet.payload[offset:offset + chunk_sz]
             else:
-                frag.unset_mf_flag()
-                frag.payload = self.nextpk_out.payload[offset:]
-            frag.encapsulate(self.frame_out)
-            super().send()
-        return True
+                frag.mf_flag = 0
+                frag.payload = packet.payload[offset:]
+            super().send(frag)
+        return 0
 
 
     def __packet_complete(self, identification):
@@ -888,24 +885,29 @@ class IPv4Handler(eth.EthernetHandler):
         or nothing suitable has been received
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
         '''
-        frame_type = super().receive(pass_on_error)
+        frame, frame_type = super().receive(pass_on_error)
 
-        if frame_type == 0 and self.frame_in is not None:
-            ip4_pk = IPv4Packet.from_frame(self.frame_in)
+        if frame_type != 4 and frame is not None:
+            ip4_pk = IPv4Packet.from_frame(frame)
 
             if self.local_ip is not None and \
                self.local_ip != ip4_pk.dst_addr:
-                return False
+                return None
             if self.remote_ip is not None and \
                self.remote_ip != ip4_pk.src_addr:
-                return False
+                return None
 
             if ip4_pk.protocol != self._protocol:
-                return False
-            # Fragmentation check
-            if ip4_pk.dont_fragment():
-                self._nextpk_in = ip4_pk
-                return True
+                return None
+
+            # Fragmentation allowed?
+            if ip4_pk.df_flag == 1:
+                if ip4_pk.total_length <= self.mtu:
+                    return ip4_pk
+                # TODO: send back ICMP message (fragmentation needed, but DF
+                # flag set)
+                return None
+
             frag_entry = self._frag_list.get(ip4_pk.identification, None)
             if frag_entry is None:
                 new_pk = ip4_pk
@@ -916,10 +918,10 @@ class IPv4Handler(eth.EthernetHandler):
                 self._frag_list[ip4_pk.identification] = {
                             'written': [(ip4_pk.frag_offset,
                                          ip4_pk.total_length - ip4_pk.ihl * 4)],
-                            'last_frag_rcvd': not ip4_pk.more_fragments(),
+                            'last_frag_rcvd': ip4_pk.mf_flag == 0,
                             'packet': new_pk
                         }
-                return False
+                return None
             if len(frag_entry['packet'].payload) > ip4_pk.frag_offset * 8:
                 frag_entry['packet'].payload = tools.set_bytes_at(
                         frag_entry['packet'].payload,
@@ -933,17 +935,17 @@ class IPv4Handler(eth.EthernetHandler):
 
             frag_entry['written'].append((ip4_pk.frag_offset,
                     ip4_pk.total_length - ip4_pk.ihl * 4))
-            if not ip4_pk.more_fragments():
+
+            if ip4_pk.mf_flag == 0:
                 frag_entry['last_frag_rcvd'] = True
 
             self._frag_list[ip4_pk.identification] = frag_entry
 
             if frag_entry['last_frag_rcvd']:
                 if self.__packet_complete(ip4_pk.identification):
-                    pk = frag_entry['packet']
-                    pk.flags = 0
-                    pk.total_length = len(pk.payload) + pk.ihl * 4
-                    self._nextpk_in = pk
+                    new_pk = frag_entry['packet']
+                    new_pk.flags = 0
+                    new_pk.total_length = len(new_pk.payload) + new_pk.ihl * 4
                     del self._frag_list[ip4_pk.identification]
-                    return True
-        return False
+                    return new_pk
+        return None
