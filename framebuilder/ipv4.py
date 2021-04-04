@@ -5,7 +5,8 @@ from copy import copy
 from random import randrange
 from math import ceil
 from framebuilder.errors import InvalidIPv4AddrException, \
-                                IncompleteIPv4HeaderException
+                                IncompleteIPv4HeaderException, \
+                                InvalidHeaderValueException
 from framebuilder.defs import get_iana_protocol_str
 from framebuilder import tools
 from framebuilder import eth
@@ -270,7 +271,7 @@ class IPv4Packet:
 
     def get_bytes(self):
         '''
-        returns IPv4 header bytes
+        returns IPv4 packet bytes
         '''
         ver_ihl = (self.version << 4) + self.ihl
         flags_off = (self.flags << 13) + self.frag_offset
@@ -352,8 +353,11 @@ class IPv4Packet:
         '''
         Setter version
         '''
-        self._version = version & 0xf
-        self._checksum = None
+        if 0 <= version < 16:
+            self._version = version
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException('IPv4 Version {}'.format(version))
 
     version = property(__get_version, __set_version)
 
@@ -369,8 +373,12 @@ class IPv4Packet:
         '''
         Setter IHL
         '''
-        self._ihl = ihl & 0xf
-        self._checksum = None
+        if 0 <= ihl < 16:
+            self._ihl = ihl
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException('IPv4 IHL {}'.format(ihl))
+
 
     ihl = property(__get_ihl, __set_ihl)
 
@@ -386,8 +394,11 @@ class IPv4Packet:
         '''
         Setter TOS
         '''
-        self._tos = tos & 0xff
-        self._checksum = None
+        if 0 <= tos < 256:
+            self._tos = tos
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException('IPv4 TOS {}'.format(tos))
 
     tos = property(__get_tos, __set_tos)
 
@@ -405,8 +416,12 @@ class IPv4Packet:
         '''
         Setter total length
         '''
-        self._total_length = total_length
-        self._checksum = None
+        if 0 <= total_length < 2 ** 16:
+            self._total_length = total_length
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException(
+                    'IPv4 Total Length {}'.format(total_length))
 
     total_length = property(__get_total_length, __set_total_length)
 
@@ -422,8 +437,12 @@ class IPv4Packet:
         '''
         Setter identification
         '''
-        self._identification = identification & 0xffff
-        self._checksum = None
+        if 0 <= identification < 2 ** 16:
+            self._identification = identification
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException(
+                    'IPv4 Identification {}'.format(identification))
 
     identification = property(__get_identification, __set_identification)
 
@@ -439,8 +458,11 @@ class IPv4Packet:
         '''
         Setter flags
         '''
-        self._flags = flags & 0b111
-        self._checksum = None
+        if 0 <= flags < 8:
+            self._flags = flags
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException('IPv4 Flags {}'.format(flags))
 
     flags = property(__get_flags, __set_flags)
 
@@ -456,8 +478,12 @@ class IPv4Packet:
         '''
         Setter fragment offset
         '''
-        self._frag_offset = frag_offset & 0b1111111111111
-        self._checksum = None
+        if 0 <= frag_offset < 2 ** 13:
+            self._frag_offset = frag_offset
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException(
+                    'IPv4 Fragmentation Offset {}'.format(frag_offset))
 
     frag_offset = property(__get_frag_offset, __set_frag_offset)
 
@@ -473,8 +499,11 @@ class IPv4Packet:
         '''
         Setter TTL
         '''
-        self._ttl = ttl & 0xff
-        self._checksum = None
+        if 0 <= ttl < 256:
+            self._ttl = ttl
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException('IPv4 TTL {}'.format(ttl))
 
     ttl = property(__get_ttl, __set_ttl)
 
@@ -490,8 +519,12 @@ class IPv4Packet:
         '''
         Setter protocol
         '''
-        self._protocol = protocol & 0xff
-        self._checksum = None
+        if 0 <= protocol < 256:
+            self._protocol = protocol
+            self._checksum = None
+        else:
+            raise InvalidHeaderValueException(
+                    'IPv4 Protocol {}'.format(protocol))
 
     protocol = property(__get_protocol, __set_protocol)
 
@@ -509,7 +542,11 @@ class IPv4Packet:
         '''
         Setter checksum
         '''
-        self._checksum = checksum & 0xffff
+        if 0 <= checksum < 2 ** 16:
+            self._checksum = checksum
+        else:
+            raise InvalidHeaderValueException(
+                    'IPv4 Checksum {}'.format(checksum))
 
     checksum = property(__get_checksum, __set_checksum)
 
@@ -621,10 +658,6 @@ class IPv4Packet:
             opt_count += 1
 
 
-    # IPv4 options are rarely used. Hence, only the following two types (record
-    # route and internet timestamp) are implemented as quick and dirty examples.
-    # All types of options can be passed to create_ipv4_header as bytes object
-    # though.
     def add_record_route_option(self, entries=9):
         '''
         Quick and dirty implementation of IPv4 record route option

@@ -1,5 +1,18 @@
 '''Module for custom exceptions'''
 
+class InvalidHeaderValueException(Exception):
+    '''
+    Exception raised if a header value is invalid, i.e. it is probably out of
+    bound
+    '''
+    def __init__(self, err_msg):
+        self.err_msg = err_msg
+        super().__init__(err_msg)
+
+    def __str__(self):
+        return 'Invalid Header Value: {}'.format(self.err_msg)
+
+
 class MTUExceededException(Exception):
     '''
     Exception raised if the supposed payload of an ethernet frame is larger
