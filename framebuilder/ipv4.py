@@ -6,6 +6,7 @@ from random import randrange
 from math import ceil
 from framebuilder.errors import InvalidIPv4AddrException, \
                                 IncompleteIPv4HeaderException, \
+                                InvalidInterfaceException, \
                                 InvalidHeaderValueException
 from framebuilder.defs import get_iana_protocol_str
 from framebuilder import tools
@@ -151,12 +152,12 @@ class IPv4Packet:
         if tools.is_valid_ipv4_address(src_addr_str):
             self._src_addr = src_addr_str
         else:
-            raise InvalidIPv4AddrException
+            raise InvalidIPv4AddrException(src_addr_str)
 
         if tools.is_valid_ipv4_address(dst_addr_str):
             self._dst_addr = dst_addr_str
         else:
-            raise InvalidIPv4AddrException
+            raise InvalidIPv4AddrException(dst_addr_str)
 
         self._version = ip4_data.get('version', 4)
         self._ihl = ip4_data.get('ihl', 5)
@@ -739,50 +740,39 @@ class IPv4Packet:
 
 class IPv4Handler(eth.EthernetHandler):
     '''
-    Manage an IPv4 connection between two hosts (multicast might be added
-    later). Here is where fragmentation should be handled.
-    The latest inbound packet is stored in nextpk_in
-    The current outbound packet is stored in nextpk_out
+    Convenience layer for IPv4 functions
     '''
 
-    def __init__(self, remote_ip=None, proto=6, local_ip=None, block=1,
-                 t_out=3.0):
+    def __init__(self, interface, remote_ip=None, src_ip=None, proto=6,
+                 block=1, t_out=3.0):
         '''
         Initialize IPv4Handler
+        :param interface: <str> interface (name or address) (None=auto)
         :param remote_ip: <str> IP address of the remote host
+        :param src_ip: <str> optional deviant source IP address
         :param proto: <int> protocol id of payload (default 6=TCP)
-        :param local_ip: <str> local IP address (None=auto)
         :param block: <int> make socket blocking (1), non-blocking (0) or
                             non-blocking with timeout (2)
         :param t_out: <float> set socket timeout in seconds
         '''
-        rt_info = tools.get_route(remote_ip)
-        n_cache = tools.get_neigh_cache()
-
         self._remote_ip = remote_ip
-        if local_ip is None:
-            self._local_ip = rt_info.get('prefsrc', '0.0.0.0')
+        self._local_ip = None
+        local_ip_dict = tools.get_local_IP_addresses(4)
+        if tools.is_valid_ipv4_address(interface):
+            self._local_ip = interface
+            interface = tools.get_interface_by_address(self._local_ip)
+            if interface is None:
+                raise InvalidInterfaceException('address not found')
         else:
-            self._local_ip = local_ip
-
-        interface = rt_info.get('dev', 'lo')
-        src_mac = tools.get_mac_addr(interface)
-        dst_mac = '00:00:00:00:00:00'
-
-        # check if there is a gateway and query neighbor cache for MAC address
-        if rt_info.get('gateway', None) is not None:
-            for n_entry in n_cache:
-                if n_entry['dst'] == rt_info['gateway']:
-                    dst_mac = n_entry['lladdr']
-                    break
-        # if not query destination IP address
-        else:
-            for n_entry in n_cache:
-                if n_entry['dst'] == remote_ip:
-                    dst_mac = n_entry['lladdr']
-                    break
+            if_addr = local_ip_dict.get(interface, None)
+            if if_addr is not None and len(if_addr) > 0:
+                self._local_ip = if_addr[0]
+            else:
+                raise InvalidInterfaceException('device not found')
+        if src_ip is not None:
+            self._local_ip = src_ip
+        local_mac = tools.get_mac_addr(interface)
         self._protocol = proto
-
         # fragment dictionary for reassembly
         # {
         #   identification_1: {'written': [(ind, len)],
@@ -793,13 +783,13 @@ class IPv4Handler(eth.EthernetHandler):
         self._frag_list = {}
         self._next_id = randrange(65536)
 
-        super().__init__(interface, dst_mac, 0x0800, src_mac, None, None,
+        super().__init__(interface, None, 0x0800, local_mac, None, None,
                          block, t_out)
 
 
-    def init_packet(self):
+    def __init_packet(self):
         '''
-        Initialize nextpk_out with local and remote IP address
+        Initialize new IPv4 packet
         '''
         ip4_data = {'protocol': self._protocol,
                     'src_addr': self._local_ip,
@@ -867,7 +857,7 @@ class IPv4Handler(eth.EthernetHandler):
         :param dont_frag: set DF flag?
         '''
         bytes_sent = 0
-        packet = self.init_packet()
+        packet = self.__init_packet()
         dgram.encapsulate(packet)
         if packet.total_length <= self.mtu:
             packet.df_flag = 1 if dont_frag else 0
@@ -891,8 +881,8 @@ class IPv4Handler(eth.EthernetHandler):
             else:
                 frag.mf_flag = 0
                 frag.payload = packet.payload[offset:]
-            super().send(frag)
-        return 0
+            bytes_sent += super().send(frag) - packet.ihl * 4
+        return bytes_sent
 
 
     def __packet_complete(self, identification):

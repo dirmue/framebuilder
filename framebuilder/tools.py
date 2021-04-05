@@ -335,6 +335,67 @@ def get_mac_addr(ifname):
     return dev_info[0].get('address', None)
 
 
+def get_interface_by_address(ip_address):
+    '''
+    Return look up local IP addresses and return interface name if given IP
+    address is found
+    '''
+    if_addr = get_ip_dict_list('ip addr show')
+    for if_data in if_addr:
+        addr_info = if_data.get('addr_info', None)
+        if addr_info is None:
+            break
+        for addr in addr_info:
+            if addr['local'] == ip_address:
+                return if_data['ifname']
+    return None
+
+
+def get_local_IP_addresses(family=None):
+    '''
+    Return all local IP addresses as dictionary
+    {
+        'if_1': [addr1, addr2, ..., addr n],
+        'if_2': [addr1, addr2, ..., addr n],
+        ...
+        'if_n': [addr1, addr2, ..., addr n],
+    }
+    :param family: address family (optional, 4=IPv4, 6=IPv6)
+    '''
+    result = {}
+    if family in [4,6]:
+        if_addr = get_ip_dict_list('ip -{} addr show'.format(family))
+    else:
+        if_addr = get_ip_dict_list('ip addr show')
+    for if_data in if_addr:
+        result[if_data['ifname']] = []
+        addr_info = if_data.get('addr_info', None)
+        if addr_info is None:
+            break
+        for addr in addr_info:
+            result[if_data['ifname']].append(addr['local'])
+    return result
+
+
+def get_mac_for_dst_ip(ip_addr):
+    '''
+    Query neighbor cache for destination MAC address
+    '''
+    rt_info = get_route(ip_addr)
+    n_cache = get_neigh_cache()
+    # check if there is a gateway and query neighbor cache for MAC address
+    if rt_info.get('gateway', None) is not None:
+        for n_entry in n_cache:
+            if n_entry['dst'] == rt_info['gateway']:
+                return n_entry['lladdr']
+    # if not query neighbor cache for destination IP address directly
+    else:
+        for n_entry in n_cache:
+            if n_entry['dst'] == ip_addr:
+                return n_entry['lladdr']
+    return '00:00:00:00:00:00'
+
+
 def get_mtu(ifname):
     '''
     Return MTU of an interface

@@ -13,6 +13,18 @@ class InvalidHeaderValueException(Exception):
         return 'Invalid Header Value: {}'.format(self.err_msg)
 
 
+class InvalidInterfaceException(Exception):
+    '''
+    Exception raised if an unknown interface is passed
+    '''
+    def __init__(self, err_msg):
+        self.err_msg = err_msg
+        super().__init__(err_msg)
+
+    def __str__(self):
+        return 'Invalid Interface: {}'.format(self.err_msg)
+
+
 class MTUExceededException(Exception):
     '''
     Exception raised if the supposed payload of an ethernet frame is larger

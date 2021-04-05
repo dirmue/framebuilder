@@ -6,7 +6,7 @@ from framebuilder.tools import to_bytes, ipv4_addr_encode, \
                                get_bytes_at, get_value_at, \
                                is_valid_ipv4_address, \
                                format_mac_addr, get_mac_addr, create_socket, \
-                               get_mtu
+                               get_mtu, get_mac_for_dst_ip
 
 from framebuilder.errors import InvalidMACAddrException, \
                                 InvalidIPv4AddrException, \
@@ -570,9 +570,7 @@ class ArpMessage(Frame):
 
 class EthernetHandler:
     '''
-    Represents a relationship of two L2 endpoints, defined by an interface, a
-    local Ethernet address and a remote Ethernet address. Its purpose is to
-    act as a parent class for upper layers.
+    Convenience layer for Ethernet functions
     '''
 
     def __init__(self, interface, remote_mac=None, ether_type=None,
@@ -590,38 +588,46 @@ class EthernetHandler:
                             non-blocking with timeout (2)
         :param t_out: <float> set socket timeout in seconds
         '''
-        if local_mac is None:
-            local_mac = get_mac_addr(interface)
-
-        if mtu is None:
-            mtu = get_mtu(interface)
 
         self._interface = interface
         self._mtu = mtu
         self._vlan_tag = vlan_tag
 
-        if is_valid_mac_address(local_mac):
-            self._local_mac = local_mac
-        else:
-            raise InvalidMACAddrException
+        if local_mac is not None:
+            if not is_valid_mac_address(local_mac):
+                raise InvalidMACAddrException
+        self._local_mac = local_mac
 
-        if is_valid_mac_address(remote_mac) or remote_mac is None:
-            self._remote_mac = remote_mac
-        else:
-            raise InvalidMACAddrException
+        if remote_mac is not None:
+            if not is_valid_mac_address(remote_mac):
+                raise InvalidMACAddrException
+        self._remote_mac = remote_mac
 
         self._ether_type = ether_type
         self._socket = create_socket(interface, blocking=block,
                                      timeout_sec=t_out)
 
 
-    def init_frame(self):
+    def __init_frame(self, packet):
         '''
-        Initialize frame with class attributes and empty payload
+        Initialize frame with empty payload
         '''
-        frame_data = {'src_addr': self.local_mac,
-                      'dst_addr': self.remote_mac,
-                      'ether_type': self._ether_type}
+        src_addr = self.local_mac
+        dst_addr = self.remote_mac
+        ether_type = self._ether_type
+
+        if src_addr is None:
+            src_addr = get_mac_addr(self.interface)
+
+        if dst_addr is None:
+            dst_addr = get_mac_for_dst_ip(packet.dst_addr)
+
+        if ether_type is None:
+            ether_type = 0x0800
+
+        frame_data = {'src_addr': src_addr,
+                      'dst_addr': dst_addr,
+                      'ether_type': ether_type}
         return Frame(frame_data, self._vlan_tag)
 
 
@@ -687,6 +693,8 @@ class EthernetHandler:
         '''
         Getter for mtu
         '''
+        if self._mtu is None:
+            return get_mtu(self._interface)
         return self._mtu
 
     def __set_mtu(self, mtu):
@@ -711,9 +719,9 @@ class EthernetHandler:
         '''
         Send data via an Ethernet frame
         '''
-        frame = self.init_frame()
+        frame = self.__init_frame(packet)
         packet.encapsulate(frame)
-        return frame.send(self._socket, self._mtu)
+        return frame.send(self._socket, self.mtu)
 
 
     def receive(self, pass_on_error=True):
