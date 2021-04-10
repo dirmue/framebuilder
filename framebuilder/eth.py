@@ -736,10 +736,6 @@ class EthernetHandler:
             frame_type = addr_info[2]
             frame = Frame.from_bytes(frame_bytes)
 
-            if self.remote_mac is not None and \
-               self.remote_mac != frame.src_addr:
-                return None, frame_type
-
             if self.local_mac is not None and \
                self.local_mac != frame.dst_addr:
                 return None, frame_type
