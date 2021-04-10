@@ -399,11 +399,11 @@ class ArpMessage(Frame):
         self._operation = arp_data['operation']
 
         if is_valid_mac_address(arp_data['snd_hw_addr']):
-            self._snd_hw_addr = arp_data['snd_hw_addr'].replace(':', '')
+            self._snd_hw_addr = arp_data['snd_hw_addr']
         else:
             raise InvalidMACAddrException(arp_data['snd_hw_addr'])
         if is_valid_mac_address(arp_data['tgt_hw_addr']):
-            self._tgt_hw_addr = arp_data['tgt_hw_addr'].replace(':', '')
+            self._tgt_hw_addr = arp_data['tgt_hw_addr']
         else:
             raise InvalidMACAddrException(arp_data['tgt_hw_addr'])
         if is_valid_ipv4_address(arp_data['snd_ip_addr']):
@@ -419,9 +419,9 @@ class ArpMessage(Frame):
                         + b'\x08\x00'
                         + b'\x06\x04'
                         + to_bytes(self._operation, 2)
-                        + bytes.fromhex(self.snd_hw_addr)
+                        + bytes.fromhex(self.snd_hw_addr.replace(':',''))
                         + bytes.fromhex(ipv4_addr_encode(self.snd_ip_addr))
-                        + bytes.fromhex(self.tgt_hw_addr)
+                        + bytes.fromhex(self.tgt_hw_addr.replace(':',''))
                         + bytes.fromhex(ipv4_addr_encode(self.tgt_ip_addr)))
 
         frame_data = {'dst_addr': arp_data['dst_addr'],
