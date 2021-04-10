@@ -381,6 +381,9 @@ def get_mac_for_dst_ip(ip_addr):
     '''
     Query neighbor cache for destination MAC address
     '''
+    local_if = get_interface_by_address(ip_addr)
+    if local_if is not None:
+        return get_mac_addr(local_if)
     rt_info = get_route(ip_addr)
     n_cache = get_neigh_cache()
     # check if there is a gateway and query neighbor cache for MAC address
@@ -393,8 +396,7 @@ def get_mac_for_dst_ip(ip_addr):
         for n_entry in n_cache:
             if n_entry['dst'] == ip_addr:
                 return n_entry['lladdr']
-    return '00:00:00:00:00:00'
-
+    raise err.FailedMACQueryException(ip_addr)
 
 def get_mtu(ifname):
     '''

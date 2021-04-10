@@ -1,5 +1,18 @@
 '''Module for custom exceptions'''
 
+class FailedMACQueryException(Exception):
+    '''
+    Exception is raised if no MAC address for a destination IP address can be
+    obtained
+    '''
+    def __init__(self, err_msg):
+        self.err_msg = err_msg
+        super().__init__(err_msg)
+
+    def __str__(self):
+        return 'Could not find MAC address: {}'.format(self.err_msg)
+
+
 class InvalidHeaderValueException(Exception):
     '''
     Exception raised if a header value is invalid, i.e. it is probably out of

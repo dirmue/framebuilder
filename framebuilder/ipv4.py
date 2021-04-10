@@ -910,6 +910,9 @@ class IPv4Handler(eth.EthernetHandler):
         '''
         frame, frame_type = super().receive(pass_on_error)
 
+        if frame is None:
+            return None
+        
         if frame_type != 4 and frame is not None:
             ip4_pk = IPv4Packet.from_frame(frame)
 
@@ -923,16 +926,13 @@ class IPv4Handler(eth.EthernetHandler):
             if ip4_pk.protocol != self._protocol:
                 return None
 
-            # Fragmentation allowed?
-            if ip4_pk.df_flag == 1:
-                if ip4_pk.total_length <= self.mtu:
-                    return ip4_pk
-                # TODO: send back ICMP message (fragmentation needed, but DF
-                # flag set)
-                return None
-
             frag_entry = self._frag_list.get(ip4_pk.identification, None)
             if frag_entry is None:
+
+                # First check if this is a fragment; if not return packet
+                if ip4_pk.mf_flag == 0 and ip4_pk.frag_offset == 0:
+                    return ip4_pk
+
                 new_pk = ip4_pk
                 new_pk.is_fragment = True
                 new_pk.payload = b'\x00' * ip4_pk.frag_offset * 8 \
