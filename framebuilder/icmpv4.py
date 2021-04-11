@@ -25,9 +25,9 @@ class ICMPv4Message():
         if icmp_data is None:
             icmp_data = {}
 
-        self._type = icmp_data.get('type', 0) & 0xff
-        self._code = icmp_data.get('code', 0) & 0xff
-        self._checksum = icmp_data.get('checksum', 0) & 0xffff
+        self._type = icmp_data.get('type', 0)
+        self._code = icmp_data.get('code', 0)
+        self._checksum = icmp_data.get('checksum', None)
         self._payload = icmp_data.get('payload', b'')
 
 
@@ -93,10 +93,10 @@ class ICMPv4Message():
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['payload'] = self._payload
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['payload'] = self.payload
         return icmp_data
 
 
@@ -105,10 +105,10 @@ class ICMPv4Message():
         returns ICMP message as bytes
         '''
         hdr_bytes = b''
-        hdr_bytes += to_bytes(self._type, 1)
-        hdr_bytes += to_bytes(self._code, 1)
-        hdr_bytes += to_bytes(self._checksum, 2)
-        hdr_bytes += self._payload
+        hdr_bytes += to_bytes(self.icmp_type, 1)
+        hdr_bytes += to_bytes(self.icmp_code, 1)
+        hdr_bytes += to_bytes(self.icmp_checksum, 2)
+        hdr_bytes += self.payload
         return hdr_bytes
 
 
@@ -127,7 +127,6 @@ class ICMPv4Message():
         Encapsulate ICMPv4 message in IPv4 packet
         :param packet: IPv4 packet object
         '''
-        self.update_checksum()
         packet.payload = self.get_bytes()
 
 
@@ -142,6 +141,7 @@ class ICMPv4Message():
         '''
         Setter for ICMP type
         '''
+        self._checksum = None
         self._type = icmp_type
 
     icmp_type = property(__get_type, __set_type)
@@ -158,6 +158,7 @@ class ICMPv4Message():
         '''
         Setter for ICMP code
         '''
+        self._checksum = None
         self._code = icmp_code
 
     icmp_code = property(__get_code, __set_code)
@@ -167,6 +168,8 @@ class ICMPv4Message():
         '''
         Getter for ICMP checksum
         '''
+        if self._checksum is None:
+            self.update_checksum()
         return self._checksum
 
 
@@ -195,6 +198,7 @@ class ICMPv4Message():
         payload bytes. Use the data attribute instead if you just want to add
         arbitrary bytes after the type-specific header information.
         '''
+        self._checksum = None
         self._payload = payload
 
     payload = property(__get_payload, __set_payload)
@@ -204,11 +208,10 @@ class ICMPv4Message():
         '''
         Print generic ICMP message information
         '''
-        self.update_checksum()
-        print('ICM Type            : ' + str(self._type))
-        print('ICM Code            : ' + str(self._code))
-        print('ICM Checksum        : 0x' + format(self._checksum, '04x'))
-        print('ICM message length  : ' + str(4 + len(self._payload)))
+        print('ICM Type            : ' + str(self.icmp_type))
+        print('ICM Code            : ' + str(self.icmp_code))
+        print('ICM Checksum        : 0x' + format(self.icmp_checksum, '04x'))
+        print('ICM message length  : ' + str(4 + len(self.payload)))
 
 
 class ICMPEchoRequest(ICMPv4Message):
@@ -244,8 +247,8 @@ class ICMPEchoRequest(ICMPv4Message):
         self.icmp_type = 8
         self.icmp_code = 0
 
-        self._identifier = data.get('identifier', 0) & 0xffff
-        self._sequence_number = data.get('seq_nr', 0) & 0xffff
+        self._identifier = data.get('identifier', 0)
+        self._sequence_number = data.get('seq_nr', 0)
         self._data = data.get('data', b'')
 
         self.payload = to_bytes(self._identifier, 2) + \
@@ -258,12 +261,12 @@ class ICMPEchoRequest(ICMPv4Message):
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['identifier'] = self._identifier
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['identifier'] = self.identifier
         icmp_data['seq_nr'] = self.sequence_number
-        icmp_data['data'] = self._data
+        icmp_data['data'] = self.data
         return icmp_data
 
 
@@ -273,8 +276,8 @@ class ICMPEchoRequest(ICMPv4Message):
         '''
         super().info()
         print('ICM Message Type    : Echo request')
-        print('ICM Identifier      : ' + str(self._identifier))
-        print('ICM Sequence Number : ' + str(self._sequence_number))
+        print('ICM Identifier      : ' + str(self.identifier))
+        print('ICM Sequence Number : ' + str(self.sequence_number))
 
 
     def __get_identifier(self):
@@ -288,7 +291,7 @@ class ICMPEchoRequest(ICMPv4Message):
         '''
         Setter for identifier
         '''
-        self._identifier = identifier & 0xffff
+        self._identifier = identifier
         self.payload = to_bytes(self._identifier, 2) + \
                        to_bytes(self._sequence_number, 2) + \
                        self._data
@@ -307,7 +310,7 @@ class ICMPEchoRequest(ICMPv4Message):
         '''
         Setter for sequence_number
         '''
-        self._sequence_number = sequence_number & 0xffff
+        self._sequence_number = sequence_number
         self.payload = to_bytes(self._identifier, 2) + \
                        to_bytes(self._sequence_number, 2) + \
                        self._data
@@ -367,8 +370,8 @@ class ICMPEchoReply(ICMPv4Message):
         self.icmp_type = 0
         self.icmp_code = 0
 
-        self._identifier = data.get('identifier', 0) & 0xffff
-        self._sequence_number = data.get('seq_nr', 0) & 0xffff
+        self._identifier = data.get('identifier', 0)
+        self._sequence_number = data.get('seq_nr', 0)
         self._data = data.get('data', b'')
 
         self.payload = to_bytes(self._identifier, 2) + \
@@ -381,12 +384,12 @@ class ICMPEchoReply(ICMPv4Message):
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['identifier'] = self._identifier
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['identifier'] = self.identifier
         icmp_data['seq_nr'] = self.sequence_number
-        icmp_data['data'] = self._data
+        icmp_data['data'] = self.data
         return icmp_data
 
 
@@ -396,8 +399,8 @@ class ICMPEchoReply(ICMPv4Message):
         '''
         super().info()
         print('ICM Message Type    : Echo repy')
-        print('ICM Identifier      : ' + str(self._identifier))
-        print('ICM Sequence Number : ' + str(self._sequence_number))
+        print('ICM Identifier      : ' + str(self.identifier))
+        print('ICM Sequence Number : ' + str(self.sequence_number))
 
 
     def __get_identifier(self):
@@ -411,7 +414,7 @@ class ICMPEchoReply(ICMPv4Message):
         '''
         Setter for identifier
         '''
-        self._identifier = identifier & 0xffff
+        self._identifier = identifier
         self.payload = to_bytes(self._identifier, 2) + \
                        to_bytes(self._sequence_number, 2) + \
                        self._data
@@ -430,7 +433,7 @@ class ICMPEchoReply(ICMPv4Message):
         '''
         Setter for sequence_number
         '''
-        self._sequence_number = sequence_number & 0xffff
+        self._sequence_number = sequence_number
         self.payload = to_bytes(self._identifier, 2) + \
                        to_bytes(self._sequence_number, 2) + \
                        self._data
@@ -496,11 +499,10 @@ class ICMPDestinationUnreachable(ICMPv4Message):
 
         self.icmp_type = 3
 
-        self.icmp_code = data.get('icmp_code', 0) & 0xff
+        self.icmp_code = data.get('icmp_code', 0)
         self._data = data.get('data', b'')
 
-        self.payload = b'\x00\x00\x00\x00' + \
-                       self._data
+        self.payload = b'\x00\x00\x00\x00' + self._data
 
 
     def __get_type_str(self):
@@ -513,7 +515,7 @@ class ICMPDestinationUnreachable(ICMPv4Message):
                  3:'Port unreachable',
                  4:'Fragmentation needed and DF set',
                  5:'Source route failed'}
-        return t_str.get(self._code, 'unknown')
+        return t_str.get(self.icmp_code, 'unknown')
 
 
     def get_dict(self):
@@ -521,10 +523,10 @@ class ICMPDestinationUnreachable(ICMPv4Message):
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['data'] = self._data
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['data'] = self.data
         return icmp_data
 
 
@@ -590,7 +592,7 @@ class ICMPTimeExceeded(ICMPv4Message):
 
         self.icmp_type = 11
 
-        self.icmp_code = data.get('icmp_code', 0) & 0xff
+        self.icmp_code = data.get('icmp_code', 0)
         self._data = data.get('data', b'')
 
         self.payload = b'\x00\x00\x00\x00' + \
@@ -603,7 +605,7 @@ class ICMPTimeExceeded(ICMPv4Message):
         '''
         t_str = {0:'Time to live exceeded in transit',
                  1:'fragment reassembly time exceeded'}
-        return t_str.get(self._code, 'unknown')
+        return t_str.get(self.icmp_code, 'unknown')
 
 
     def get_dict(self):
@@ -611,10 +613,10 @@ class ICMPTimeExceeded(ICMPv4Message):
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['data'] = self._data
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['data'] = self.data
         return icmp_data
 
 
@@ -683,8 +685,8 @@ class ICMPParameterProblem(ICMPv4Message):
 
         self.icmp_type = 12
 
-        self.icmp_code = data.get('icmp_code', 0) & 0xff
-        self._pointer = data.get('pointer', 0) & 0xff
+        self.icmp_code = data.get('icmp_code', 0)
+        self._pointer = data.get('pointer', 0)
         self._data = data.get('data', b'')
 
         self.payload = to_bytes(self._pointer, 1) + \
@@ -706,7 +708,7 @@ class ICMPParameterProblem(ICMPv4Message):
                  10:'Header Checksum',
                  12:'Source Address',
                  16:'Destination Address'}
-        return p_str.get(self._pointer, 'Option')
+        return p_str.get(self.pointer, 'Option')
 
 
     def get_dict(self):
@@ -714,11 +716,11 @@ class ICMPParameterProblem(ICMPv4Message):
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['pointer'] = self._pointer
-        icmp_data['data'] = self._data
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['pointer'] = self.pointer
+        icmp_data['data'] = self.data
         return icmp_data
 
 
@@ -729,7 +731,7 @@ class ICMPParameterProblem(ICMPv4Message):
         super().info()
         print('ICM Message Type    : Parameter Problem')
         p_str = self.__get_param_str()
-        print('ICM Pointer         : {} ({})'.format(self._pointer, p_str))
+        print('ICM Pointer         : {} ({})'.format(self.pointer, p_str))
 
 
     def __get_pointer(self):
@@ -743,7 +745,7 @@ class ICMPParameterProblem(ICMPv4Message):
         '''
         Setter for pointer
         '''
-        self._pointer = pointer & 0xff
+        self._pointer = pointer
         self.payload = to_bytes(self._pointer, 1) + \
                        b'\x00\x00\x00' + \
                        self._data
@@ -820,19 +822,20 @@ class ICMPRedirect(ICMPv4Message):
 
         self.icmp_type = 5
 
-        self.icmp_code = data.get('icmp_code', 0) & 0xff
+        self.icmp_code = data.get('icmp_code', 0)
         self._gateway_ip = data.get('gateway_ip', '0.0.0.0')
         self._data = data.get('data', b'')
 
         self.payload = ipv4_addr_encode(self._gateway_ip) + \
                        self._data
 
+
     def __get_redir_str(self):
         r_str = {0:'Network',
                  1:'Host',
                  2:'Service and Network',
                  3:'Service and Host'}
-        return r_str.get(self._code, 'Option')
+        return r_str.get(self.icmp_code, 'Option')
 
 
     def get_dict(self):
@@ -840,11 +843,11 @@ class ICMPRedirect(ICMPv4Message):
         Returns ICMP message data as dictionary
         '''
         icmp_data = {}
-        icmp_data['type'] = self._type
-        icmp_data['code'] = self._code
-        icmp_data['checksum'] = self._checksum
-        icmp_data['gateway_ip'] = self._gateway_ip
-        icmp_data['data'] = self._data
+        icmp_data['type'] = self.icmp_type
+        icmp_data['code'] = self.icmp_code
+        icmp_data['checksum'] = self.icmp_checksum
+        icmp_data['gateway_ip'] = self.gateway_ip
+        icmp_data['data'] = self.data
         return icmp_data
 
 
@@ -855,7 +858,7 @@ class ICMPRedirect(ICMPv4Message):
         super().info()
         print('ICM Message Type    : Redirect')
         print('ICM Redirect for    : ' + self.__get_redir_str())
-        print('Suggested Gateway   : ' + self._gateway_ip)
+        print('Suggested Gateway   : ' + self.gateway_ip)
 
 
     def __get_data(self):

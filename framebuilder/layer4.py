@@ -12,14 +12,15 @@ class Base:
         self._pseudo_header = pseudo_header
         self._payload = payload
         self._checksum = checksum
-        if self._checksum is None:
-            self.update_checksum()
+
 
     def get_bytes(self):
         '''
         Return packet as bytes, to be implemented by child class
         '''
-        pass
+        self.update_checksum()
+        return b''
+
 
     def create_pseudo_header(self, packet):
         '''
@@ -32,28 +33,35 @@ class Base:
             # IPv4
             self._layer3_proto = 0x0800
             new_len_bytes = tools.to_bytes(len(self.get_bytes()), 2)
-            self._pseudo_header = tools.set_bytes_at(self._pseudo_header, new_len_bytes, 10)
+            self._pseudo_header = tools.set_bytes_at(self._pseudo_header,
+                    new_len_bytes, 10)
         elif len(self._pseudo_header) == 40:
             # IPv6
             self._layer3_proto = 0x86dd
             new_len_bytes = tools.to_bytes(len(self.get_bytes()), 4)
-            self._pseudo_header = tools.set_bytes_at(self._pseudo_header, new_len_bytes, 32)
+            self._pseudo_header = tools.set_bytes_at(self._pseudo_header,
+                    new_len_bytes, 32)
+
 
     def update_checksum(self):
         '''
         Update Layer4 checksum
         '''
-        self._checksum = 0
-        self._checksum = tools.calc_chksum(self._pseudo_header +
-                                             self.get_bytes() +
-                                             b'\x00' * (len(self._payload) % 2))
+        if self.pseudo_header is not None:
+            self._checksum = 0
+            self._checksum = tools.calc_chksum(self.pseudo_header +
+                    self.get_bytes() +
+                    b'\x00' * (len(self.payload) % 2))
 
 
     def verify_checksum(self):
         '''
         Verify Layer4 checksum
         '''
-        return self._checksum == 0xffff
+        result = tools.calc_chksum(self.pseudo_header +
+                self.get_bytes() +
+                b'\x00' * (len(self.payload) % 2))
+        return result == 0xffff
 
 
     def encapsulate(self, packet):
@@ -64,7 +72,6 @@ class Base:
         self.create_pseudo_header(packet)
         self.update_checksum()
         packet.payload = self.get_bytes()
-        packet.update_ihl_len_cks()
 
 
     def __get_src_port(self):
@@ -78,6 +85,7 @@ class Base:
         '''
         Setter for src_port
         '''
+        self._checksum = None
         self._src_port = src_port
 
     src_port = property(__get_src_port, __set_src_port)
@@ -94,6 +102,7 @@ class Base:
         '''
         Setter for dst_port
         '''
+        self._checksum = None
         self._dst_port = dst_port
 
     dst_port = property(__get_dst_port, __set_dst_port)
@@ -110,6 +119,7 @@ class Base:
         '''
         Setter for pseudo_header
         '''
+        self._checksum = None
         self._pseudo_header = pseudo_header
 
     pseudo_header = property(__get_pseudo_header, __set_pseudo_header)
@@ -126,6 +136,7 @@ class Base:
         '''
         Setter for payload
         '''
+        self._checksum = None
         self._payload = payload
 
     payload = property(__get_payload, __set_payload)
@@ -135,6 +146,8 @@ class Base:
         '''
         Getter for checksum
         '''
+        if self._checksum is None:
+            self.update_checksum()
         return self._checksum
 
 

@@ -1,4 +1,4 @@
-'''Module for IPv4 functions used by custompk'''
+'''Module for IPv4 functions'''
 
 from socket import inet_aton, inet_ntoa
 from copy import copy
@@ -120,7 +120,7 @@ class IPv4Packet:
     DS (Differentiated Service) Field
     '''
 
-    def __init__(self, ip4_data=None, is_fragment=False):
+    def __init__(self, ip4_data=None):
         '''
         Initialize IPv4 packet
         :param ip4_data: Dictionary containing packet information as follows
@@ -170,7 +170,6 @@ class IPv4Packet:
         self._protocol = ip4_data.get('protocol', 0)
         self._checksum = ip4_data.get('checksum', None)
         self._payload = ip4_data.get('payload', b'')
-        self.is_fragment = is_fragment
         self._options = []
         if ip4_data.get('options', None) is not None:
             for opt in ip4_data['options']:
@@ -222,8 +221,6 @@ class IPv4Packet:
                     ip4_data['options'].append(opt)
                     index += olength
         ip4_data['payload'] = ip4_bytes[ip4_data['ihl']*4:]
-        if ip4_data['total_length'] > len(ip4_data['payload']):
-            return cls(ip4_data, True)
         return cls(ip4_data)
 
 
@@ -232,22 +229,22 @@ class IPv4Packet:
         Return header data as dictionary
         '''
         dct = {
-            'version': self._version,
-            'ihl': self._ihl,
-            'tos': self._tos,
-            'total_length': self._total_length,
-            'identification': self._identification,
-            'flags': self._flags,
-            'frag_offset': self._frag_offset,
-            'ttl': self._ttl,
-            'protocol': self._protocol,
-            'checksum': self._checksum,
-            'src_addr': self._src_addr,
-            'dst_addr': self._dst_addr,
+            'version': self.version,
+            'ihl': self.ihl,
+            'tos': self.tos,
+            'total_length': self.total_length,
+            'identification': self.identification,
+            'flags': self.flags,
+            'frag_offset': self.frag_offset,
+            'ttl': self.ttl,
+            'protocol': self.protocol,
+            'checksum': self.checksum,
+            'src_addr': self.src_addr,
+            'dst_addr': self.dst_addr,
             'options': [],
-            'payload': self._payload
+            'payload': self.payload
         }
-        for opt in self._options:
+        for opt in self.options:
             dct['options'].append(opt.get_dict())
         return dct
 
@@ -847,7 +844,13 @@ class IPv4Handler(eth.EthernetHandler):
         '''
         return self._protocol
 
-    protocol = property(__get_protocol)
+    def __set_protocol(self, proto):
+        '''
+        Getter for protocol
+        '''
+        self._protocol = proto
+
+    protocol = property(__get_protocol, __set_protocol)
 
 
     def send(self, dgram, dont_frag=False):
@@ -900,25 +903,30 @@ class IPv4Handler(eth.EthernetHandler):
         return True
 
 
-    def receive(self, pass_on_error=True):
+    def receive(self, pass_on_error=True, promisc=False):
         '''
         Receive next packet that belongs to this connection, i.e. either set
         packet to None or IPv4Packet object created from received frame
         Return True if a full packet is received and false if only a fragment
         or nothing suitable has been received
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
+        :any_source: <bool> accept packets from any source
+        :promisc: <bool> receive packets that are not for us
         '''
-        frame, frame_type = super().receive(pass_on_error)
+        frame, frame_type = super().receive(pass_on_error, promisc)
 
         if frame is None:
             return None
         
+        # frame_type != 4 -> don't process frames that we have sent
         if frame_type != 4 and frame is not None:
             ip4_pk = IPv4Packet.from_frame(frame)
 
-            if self.local_ip is not None and \
-               self.local_ip != ip4_pk.dst_addr:
-                return None
+            if not promisc:
+                if self.local_ip is not None and \
+                   self.local_ip != ip4_pk.dst_addr:
+                    return None
+
             if self.remote_ip is not None and \
                self.remote_ip != ip4_pk.src_addr:
                 return None
@@ -934,7 +942,6 @@ class IPv4Handler(eth.EthernetHandler):
                     return ip4_pk
 
                 new_pk = ip4_pk
-                new_pk.is_fragment = True
                 new_pk.payload = b'\x00' * ip4_pk.frag_offset * 8 \
                                  + ip4_pk.payload
 

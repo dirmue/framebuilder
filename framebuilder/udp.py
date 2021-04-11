@@ -37,7 +37,7 @@ class UDPDatagram(layer4.Base):
         if udp_data is None:
             udp_data = {}
 
-        self._length = udp_data.get('length', 0) & 0xffff
+        self._length = udp_data.get('length', 0)
 
         proto = udp_data.get('layer3_proto', 0x0800)
         if proto == 0x0800:
@@ -50,12 +50,12 @@ class UDPDatagram(layer4.Base):
             # pseudo header for unknown layer 3 protocols
             pseudo_header = udp_data.get('pseudo_header', b'')
         super().__init__(
-            udp_data.get('src_port', 0) & 0xffff,
-            udp_data.get('dst_port', 0) & 0xffff,
+            udp_data.get('src_port', 0),
+            udp_data.get('dst_port', 0),
             proto,
             pseudo_header,
             udp_data.get('payload', b''),
-            udp_data.get('checksum', 0) & 0xffff,
+            udp_data.get('checksum', None)
             )
 
 
@@ -90,13 +90,13 @@ class UDPDatagram(layer4.Base):
         '''
         if calc_cs:
             self.update_checksum()
-        print('UDP source port     : ' + str(self._src_port))
-        print('UDP destination port: ' + str(self._dst_port))
-        print('UDP length          : ' + str(self._length))
+        print('UDP source port     : ' + str(self.src_port))
+        print('UDP destination port: ' + str(self.dst_port))
+        print('UDP length          : ' + str(self.length))
         valid_str = '(incorrect)'
         if self.verify_checksum():
             valid_str = '(correct)'
-        print('UDP checksum        : 0x' + format(self._checksum, '04x'),
+        print('UDP checksum        : 0x' + format(self.checksum, '04x'),
               valid_str)
 
 
@@ -106,12 +106,12 @@ class UDPDatagram(layer4.Base):
         '''
         udp_data = {}
         udp_data['layer3_proto'] = self._layer3_proto
-        udp_data['pseudo_header'] = self._pseudo_header
-        udp_data['src_port'] = self._src_port
-        udp_data['dst_port'] = self._dst_port
-        udp_data['length'] = self._length
-        udp_data['checksum'] = self._checksum
-        udp_data['payload'] = self._payload
+        udp_data['pseudo_header'] = self.pseudo_header
+        udp_data['src_port'] = self.src_port
+        udp_data['dst_port'] = self.dst_port
+        udp_data['length'] = self.length
+        udp_data['checksum'] = self.checksum
+        udp_data['payload'] = self.payload
         return udp_data
 
 
@@ -119,11 +119,11 @@ class UDPDatagram(layer4.Base):
         '''
         Return UDP datagram as bytes
         '''
-        return bytes(tools.to_bytes(self._src_port, 2) +
-                     tools.to_bytes(self._dst_port, 2) +
-                     tools.to_bytes(self._length, 2) +
-                     tools.to_bytes(self._checksum, 2) +
-                     self._payload)
+        return bytes(tools.to_bytes(self.src_port, 2) +
+                     tools.to_bytes(self.dst_port, 2) +
+                     tools.to_bytes(self.length, 2) +
+                     tools.to_bytes(self.checksum, 2) +
+                     self.payload)
 
 
     def __get_length(self):
@@ -137,6 +137,25 @@ class UDPDatagram(layer4.Base):
         '''
         Setter length
         '''
+        self._checksum = None
         self._length = length
 
     length = property(__get_length, __set_length)
+
+
+    def __get_payload(self):
+        '''
+        Getter for payload
+        '''
+        return self._payload
+
+
+    def __set_payload(self, payload):
+        '''
+        Setter for payload
+        '''
+        self._payload = payload
+        self.length = len(payload) + 8
+        self._checksum = None
+
+    payload = property(__get_payload, __set_payload)

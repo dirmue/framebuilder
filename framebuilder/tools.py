@@ -81,11 +81,12 @@ def _print_pkg_data(pkgdata, mode, bytes_per_row):
     '''
     bytes_cnt = 0
     data = struct.unpack('!%dc' % len(pkgdata), pkgdata)
+    line_str = '+--' if mode == 'hex' else '+-'
 
     if len(pkgdata) < bytes_per_row:
-        print('+--------' + '+--' * len(pkgdata) + '+')
+        print('+--------' + line_str * len(pkgdata) + '+')
     else:
-        print('+--------' + '+--' * bytes_per_row + '+')
+        print('+--------' + line_str * bytes_per_row + '+')
 
     for byte in data:
         chars = ' '
@@ -102,15 +103,15 @@ def _print_pkg_data(pkgdata, mode, bytes_per_row):
         else:
             print(chars, end = '|\n')
             if bytes_cnt != len(data):
-                print('|        ' + '+--' * bytes_per_row + '+')
+                print('|        ' + line_str * bytes_per_row + '+')
                 print('| 0x%s |' % format((bytes_cnt // bytes_per_row) * \
                         bytes_per_row, '04x'), end = '')
             else:
-                print('+--------' + '+--' * bytes_per_row + '+')
+                print('+--------' + line_str * bytes_per_row + '+')
 
     if bytes_cnt % bytes_per_row != 0:
         print('\n+--------', end = '')
-        print('+--' * (bytes_cnt % bytes_per_row) + '+')
+        print(line_str * (bytes_cnt % bytes_per_row) + '+')
 
 
 def create_socket(interface, proto_id=3, blocking=1, timeout_sec=3.0):

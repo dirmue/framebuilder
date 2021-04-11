@@ -620,6 +620,7 @@ class EthernetHandler:
             src_addr = get_mac_addr(self.interface)
 
         if dst_addr is None:
+            # TODO: broadcast & multicast does not work yet
             dst_addr = get_mac_for_dst_ip(packet.dst_addr)
 
         if ether_type is None:
@@ -724,20 +725,27 @@ class EthernetHandler:
         return frame.send(self._socket, self.mtu)
 
 
-    def receive(self, pass_on_error=True):
+    def receive(self, pass_on_error=True, promisc=False):
         '''
         Receive next frame that belongs to this connection, i.e. either set
         frame to None or frame object created from incoming bytes
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
                                      (may be useful with non-blocking sockets)
+        :any_source: <bool> accept frames from any source
+        :promisc: <bool> receive frames that are not for us
         '''
         try:
             frame_bytes, addr_info = self._socket.recvfrom(65536)
             frame_type = addr_info[2]
             frame = Frame.from_bytes(frame_bytes)
 
-            if self.local_mac is not None and \
-               self.local_mac != frame.dst_addr:
+            if not promisc:
+                if self.local_mac is not None and \
+                   self.local_mac != frame.dst_addr:
+                    return None, frame_type
+
+            if self.remote_mac is not None and \
+               self.remote_mac != frame.src_addr:
                 return None, frame_type
 
             if self._ether_type is not None and \
@@ -750,8 +758,8 @@ class EthernetHandler:
             if self._vlan_tag is not None and frame.vlan_tag is not None:
                 if frame.vlan_tag.vlan_id == self._vlan_tag.vlan_id:
                     return frame, frame_type
-            return None
+            return None, -1
         except Exception as ex:
             if pass_on_error:
-                pass
+                return None, -1
             raise ex
