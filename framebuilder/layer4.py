@@ -146,8 +146,6 @@ class Base:
         '''
         if self._checksum is None and self.pseudo_header is not None:
             self.update_checksum()
-            self.info()
-            print(self.get_dict())
         return self._checksum
 
 
