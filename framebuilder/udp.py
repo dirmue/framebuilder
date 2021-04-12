@@ -42,13 +42,10 @@ class UDPDatagram(layer4.Base):
         proto = udp_data.get('layer3_proto', 0x0800)
         if proto == 0x0800:
             # IPv4 pseudo header
-            pseudo_header = udp_data.get('pseudo_header', b'\x00' * 12)
+            pseudo_header = udp_data.get('pseudo_header', None)
         elif self._layer3_proto == 0x86dd:
             # IPv6 pseudo header
-            pseudo_header = udp_data.get('pseudo_header', b'\x00' * 40)
-        if pseudo_header is None:
-            # pseudo header for unknown layer 3 protocols
-            pseudo_header = udp_data.get('pseudo_header', b'')
+            pseudo_header = udp_data.get('pseudo_header', None)
         super().__init__(
             udp_data.get('src_port', 0),
             udp_data.get('dst_port', 0),
@@ -93,11 +90,12 @@ class UDPDatagram(layer4.Base):
         print('UDP source port     : ' + str(self.src_port))
         print('UDP destination port: ' + str(self.dst_port))
         print('UDP length          : ' + str(self.length))
-        valid_str = '(incorrect)'
-        if self.verify_checksum():
-            valid_str = '(correct)'
-        print('UDP checksum        : 0x' + format(self.checksum, '04x'),
-              valid_str)
+        if self.pseudo_header is not None:
+            valid_str = '(incorrect)'
+            if self.verify_checksum():
+                valid_str = '(correct)'
+            print('UDP checksum        : 0x' + format(self.checksum, '04x'),
+                  valid_str)
 
 
     def get_dict(self):
