@@ -80,13 +80,11 @@ class UDPDatagram(layer4.Base):
         return dgram
 
 
-    def info(self, calc_cs=False):
+    def info(self):
         '''
         Print datagram information
         :param calc_cs: <bool> Calculate checksum?
         '''
-        if calc_cs:
-            self.update_checksum()
         print('UDP source port     : ' + str(self.src_port))
         print('UDP destination port: ' + str(self.dst_port))
         print('UDP length          : ' + str(self.length))

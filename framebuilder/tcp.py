@@ -21,7 +21,7 @@ class TCPOption:
         if opt_data is None:
             opt_data = {}
 
-        self._okind = opt_data.get('kind', 0) & 0xff
+        self._okind = opt_data.get('kind', 0)
         self._olength = opt_data.get('length', None)
         self._odata = opt_data.get('option_data', None)
 
@@ -150,12 +150,12 @@ class TCPSegment(layer4.Base):
         if tcp_data is None:
             tcp_data = {}
 
-        self._seq_nr = tcp_data.get('seq_nr', 0) & 0xffffffff
-        self._ack_nr = tcp_data.get('ack_nr', 0) & 0xffffffff
-        self._data_offset = tcp_data.get('data_offset', 5) & 0xf
-        self._flags = tcp_data.get('flags', 0) & 0xff
-        self._window = tcp_data.get('window', 0) & 0xffff
-        self._urg_ptr = tcp_data.get('urg_ptr', 0) & 0xffff
+        self._seq_nr = tcp_data.get('seq_nr', 0)
+        self._ack_nr = tcp_data.get('ack_nr', 0)
+        self._data_offset = tcp_data.get('data_offset', 5)
+        self._flags = tcp_data.get('flags', 0)
+        self._window = tcp_data.get('window', 0)
+        self._urg_ptr = tcp_data.get('urg_ptr', 0)
         self._options = []
         if tcp_data.get('options', None) is not None:
             for opt in tcp_data['options']:
@@ -165,20 +165,17 @@ class TCPSegment(layer4.Base):
         proto = tcp_data.get('layer3_proto', 0x0800)
         if proto == 0x0800:
             # IPv4 pseudo header
-            pseudo_header = tcp_data.get('pseudo_header', b'\x00' * 12)
+            pseudo_header = tcp_data.get('pseudo_header', None)
         elif proto == 0x86dd:
             # IPv6 pseudo header
-            pseudo_header = tcp_data.get('pseudo_header', b'\x00' * 40)
-        if pseudo_header is None:
-            # empty pseudo header for unknown layer 3 protocols
-            pseudo_header = tcp_data.get('pseudo_header', b'')
+            pseudo_header = tcp_data.get('pseudo_header', None)
         super().__init__(
-            tcp_data.get('src_port', 0) & 0xffff,
-            tcp_data.get('dst_port', 0) & 0xffff,
+            tcp_data.get('src_port', 0),
+            tcp_data.get('dst_port', 0),
             proto,
             pseudo_header,
             tcp_data.get('payload', b''),
-            tcp_data.get('checksum', 0) & 0xffff
+            tcp_data.get('checksum', 0)
             )
 
 
@@ -235,22 +232,21 @@ class TCPSegment(layer4.Base):
         '''
         tcp_data = {}
 
-        tcp_data['layer3_proto'] = self._layer3_proto
-        tcp_data['pseudo_header'] = self._pseudo_header
-        tcp_data['src_port'] = self._src_port
-        tcp_data['dst_port'] = self._dst_port
-        tcp_data['seq_nr'] = self._seq_nr
-        tcp_data['ack_nr'] = self._ack_nr
-        tcp_data['data_offset'] = self._data_offset
-        tcp_data['flags'] = self._flags
-        tcp_data['window'] = self._window
-        self.update_checksum()
-        tcp_data['checksum'] = self._checksum
-        tcp_data['urg_ptr'] = self._urg_ptr
+        tcp_data['layer3_proto'] = self.layer3_proto
+        tcp_data['pseudo_header'] = self.pseudo_header
+        tcp_data['src_port'] = self.src_port
+        tcp_data['dst_port'] = self.dst_port
+        tcp_data['seq_nr'] = self.seq_nr
+        tcp_data['ack_nr'] = self.ack_nr
+        tcp_data['data_offset'] = self.data_offset
+        tcp_data['flags'] = self.flags
+        tcp_data['window'] = self.window
+        tcp_data['checksum'] = self.checksum
+        tcp_data['urg_ptr'] = self.urg_ptr
         tcp_data['options'] = []
-        for opt in self._options:
+        for opt in self.options:
             tcp_data['options'].append(opt.get_dict())
-        tcp_data['payload'] = self._payload
+        tcp_data['payload'] = self.payload
         return tcp_data
 
 
@@ -259,19 +255,19 @@ class TCPSegment(layer4.Base):
         Return segment data as bytes
         '''
         opt_bytes = b''
-        for opt in self._options:
+        for opt in self.options:
             opt_bytes += opt.get_bytes()
-        return bytes(tools.to_bytes(self._src_port, 2) +
-                     tools.to_bytes(self._dst_port, 2) +
-                     tools.to_bytes(self._seq_nr, 4) +
-                     tools.to_bytes(self._ack_nr, 4) +
-                     tools.to_bytes(self._data_offset << 4, 1) +
-                     tools.to_bytes(self._flags, 1) +
-                     tools.to_bytes(self._window, 2) +
-                     tools.to_bytes(self._checksum, 2) +
-                     tools.to_bytes(self._urg_ptr, 2) +
+        return bytes(tools.to_bytes(self.src_port, 2) +
+                     tools.to_bytes(self.dst_port, 2) +
+                     tools.to_bytes(self.seq_nr, 4) +
+                     tools.to_bytes(self.ack_nr, 4) +
+                     tools.to_bytes(self.data_offset << 4, 1) +
+                     tools.to_bytes(self.flags, 1) +
+                     tools.to_bytes(self.window, 2) +
+                     tools.to_bytes(self.checksum, 2) +
+                     tools.to_bytes(self.urg_ptr, 2) +
                      opt_bytes +
-                     self._payload)
+                     self.payload)
 
 
     def get_flag_str(self):
@@ -300,41 +296,31 @@ class TCPSegment(layer4.Base):
         return '|'.join(f_str_lst)
 
 
-    def info(self, calc_cs=False):
+    def info(self):
         '''
         Print TCP segment info
         :param calc_cs: <bool> Calculate checksum?
         '''
-        print('TCP source port     : ' + str(self._src_port))
-        print('TCP destination port: ' + str(self._dst_port))
-        print('TCP sequence number : ' + str(self._seq_nr))
-        print('TCP ack number      : ' + str(self._ack_nr))
-        print('TCP data offset     : ' + str(self._data_offset))
+        print('TCP source port     : ' + str(self.src_port))
+        print('TCP destination port: ' + str(self.dst_port))
+        print('TCP sequence number : ' + str(self.seq_nr))
+        print('TCP ack number      : ' + str(self.ack_nr))
+        print('TCP data offset     : ' + str(self.data_offset))
         print('TCP flags           : ' + self.get_flag_str())
-        print('TCP receive window  : ' + str(self._window))
-        if calc_cs:
-            self.update_checksum()
-        valid_str = '(incorrect)'
-        if self.verify_checksum():
-            valid_str = '(correct)'
-        print('TCP checksum        : 0x' + format(self._checksum, '04x'),
-              valid_str)
-        print('TCP urgent pointer  : ' + str(self._urg_ptr))
-        print('TCP payload length  : ' + str(len(self._payload)))
+        print('TCP receive window  : ' + str(self.window))
+        if self.pseudo_header is not None:
+            valid_str = '(incorrect)'
+            if self.verify_checksum():
+                valid_str = '(correct)'
+            print('TCP checksum        : 0x' + format(self.checksum, '04x'),
+                  valid_str)
+        print('TCP urgent pointer  : ' + str(self.urg_ptr))
+        print('TCP payload length  : ' + str(len(self.payload)))
         opt_count = 1
-        for opt in self._options:
+        for opt in self.options:
             print('TCP Option #{}'.format(opt_count))
             opt.info()
             opt_count += 1
-
-
-    def __get_length(self):
-        '''
-        Getter for length
-        '''
-        return len(self.payload)
-
-    length = property(__get_length)
 
 
     def __get_seq_nr(self):
@@ -348,6 +334,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for seq_nr
         '''
+        self.checksum = None
         self._seq_nr = seq_nr
 
     seq_nr = property(__get_seq_nr, __set_seq_nr)
@@ -364,6 +351,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for ack_nr
         '''
+        self.checksum = None
         self._ack_nr = ack_nr
 
     ack_nr = property(__get_ack_nr, __set_ack_nr)
@@ -380,6 +368,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for data_offset
         '''
+        self.checksum = None
         self._data_offset = data_offset
 
     data_offset = property(__get_data_offset, __set_data_offset)
@@ -396,6 +385,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for flags
         '''
+        self.checksum = None
         self._flags = flags
 
     flags = property(__get_flags, __set_flags)
@@ -414,8 +404,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 1
         if self.__get_fin() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_fin() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     fin = property(__get_fin, __set_fin)
@@ -434,8 +426,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 2
         if self.__get_syn() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_syn() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     syn = property(__get_syn, __set_syn)
@@ -454,8 +448,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 4
         if self.__get_rst() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_rst() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     rst = property(__get_rst, __set_rst)
@@ -474,8 +470,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 8
         if self.__get_psh() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_psh() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     psh = property(__get_psh, __set_psh)
@@ -494,8 +492,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 16
         if self.__get_ack() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_ack() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     ack = property(__get_ack, __set_ack)
@@ -514,8 +514,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 32
         if self.__get_urg() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_urg() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     urg = property(__get_urg, __set_urg)
@@ -534,8 +536,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 64
         if self.__get_ece() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_ece() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     ece = property(__get_ece, __set_ece)
@@ -554,8 +558,10 @@ class TCPSegment(layer4.Base):
         '''
         pos = 128
         if self.__get_cwr() == 0 and f_val & 1 == 1:
+            self.checksum = None
             self._flags += pos
         if self.__get_cwr() == 1 and f_val & 1 == 0:
+            self.checksum = None
             self._flags -= pos
 
     cwr = property(__get_cwr, __set_cwr)
@@ -572,6 +578,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for window
         '''
+        self.checksum = None
         self._window = window
 
     window = property(__get_window, __set_window)
@@ -588,6 +595,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for urg_ptr
         '''
+        self.checksum = None
         self._urg_ptr = urg_ptr
 
     urg_ptr = property(__get_urg_ptr, __set_urg_ptr)
@@ -604,6 +612,7 @@ class TCPSegment(layer4.Base):
         '''
         Setter for options
         '''
+        self.checksum = None
         self._options = options
 
     options = property(__get_options, __set_options)
@@ -613,7 +622,7 @@ class TCPSegment(layer4.Base):
         '''
         Deletes all options and resets data offset
         '''
-        self._options = []
+        self.options = []
         self.data_offset = 5
 
 
@@ -642,9 +651,9 @@ class TCPSegment(layer4.Base):
                          'length': o_length,
                          'option_data': tools.to_bytes(o_val, 2)})
 
-        self._options.append(opt)
-        self._data_offset += 1
-        if self._data_offset > 15:
+        self.options.append(opt)
+        self.data_offset += 1
+        if self.data_offset > 15:
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
@@ -679,9 +688,9 @@ class TCPSegment(layer4.Base):
                          'option_data': tools.to_bytes(o_val, 1)})
 
         self.add_tcp_noop_option()
-        self._options.append(opt)
-        self._data_offset += 1
-        if self._data_offset > 15:
+        self.options.append(opt)
+        self.data_offset += 1
+        if self.data_offset > 15:
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
@@ -703,8 +712,8 @@ class TCPSegment(layer4.Base):
 
         self.add_tcp_noop_option()
         self.add_tcp_noop_option()
-        self._options.append(opt)
-        self._data_offset += 3
+        self.options.append(opt)
+        self.data_offset += 3
         if self._data_offset > 15:
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
@@ -720,9 +729,9 @@ class TCPSegment(layer4.Base):
 
         self.add_tcp_noop_option()
         self.add_tcp_noop_option()
-        self._options.append(opt)
-        self._data_offset += 1
-        if self._data_offset > 15:
+        self.options.append(opt)
+        self.data_offset += 1
+        if self.data_offset > 15:
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
@@ -754,10 +763,10 @@ class TCPSegment(layer4.Base):
 
         self.add_tcp_noop_option()
         self.add_tcp_noop_option()
-        self._data_offset += (o_length + 2) / 4
-        if self._data_offset > 15:
+        self.data_offset += (o_length + 2) / 4
+        if self.data_offset > 15:
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
-        self._options.append(opt)
+        self.options.append(opt)
 
 
     def add_tcp_noop_option(self):
@@ -766,7 +775,7 @@ class TCPSegment(layer4.Base):
         '''
         opt = TCPOption({'kind': 1})
 
-        self._options.append(opt)
+        self.options.append(opt)
 
 
     def add_tcp_eol_option(self):
@@ -778,9 +787,9 @@ class TCPSegment(layer4.Base):
         self.add_tcp_noop_option()
         self.add_tcp_noop_option()
         self.add_tcp_noop_option()
-        self._options.append(opt)
-        self._data_offset += 1
-        if self._data_offset > 15:
+        self.options.append(opt)
+        self.data_offset += 1
+        if self.data_offset > 15:
             raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
