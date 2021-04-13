@@ -426,3 +426,11 @@ def print_rgb(string, rgb=(255, 255, 255), bold=False, end=None):
         print(f_str.format(rgb[0], rgb[1], rgb[2], string))
     else:
         print(f_str.format(rgb[0], rgb[1], rgb[2], string), end=end)
+
+
+def get_rfc793_isn():
+    '''
+    Return a new 32 bit initial TCP segment number based on the insecure
+    (but simple) RFC793 timer method
+    '''
+    return (int(time.time_ns() // 1e6) >> 2) & 0xfffffff

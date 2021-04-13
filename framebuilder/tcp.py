@@ -1,6 +1,7 @@
 '''Module for TCP functions used by custompk'''
 
-from framebuilder import tools, errors, layer4, ipv4
+from time import time_ns
+from framebuilder import tools, errors as err, layer4, ipv4
 
 class TCPOption:
     '''
@@ -654,7 +655,7 @@ class TCPSegment(layer4.Base):
         self.options.append(opt)
         self.data_offset += 1
         if self.data_offset > 15:
-            raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+            raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
     def add_tcp_wscale_option(self, shift_ct=0):
@@ -691,7 +692,7 @@ class TCPSegment(layer4.Base):
         self.options.append(opt)
         self.data_offset += 1
         if self.data_offset > 15:
-            raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+            raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
     def add_tcp_ts_option(self, ts_val=0, ts_ecr=0):
@@ -715,7 +716,7 @@ class TCPSegment(layer4.Base):
         self.options.append(opt)
         self.data_offset += 3
         if self._data_offset > 15:
-            raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+            raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
     def add_tcp_sack_perm_option(self):
@@ -732,7 +733,7 @@ class TCPSegment(layer4.Base):
         self.options.append(opt)
         self.data_offset += 1
         if self.data_offset > 15:
-            raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+            raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
     def add_tcp_sack_option(self, sack_blocks):
@@ -765,7 +766,7 @@ class TCPSegment(layer4.Base):
         self.add_tcp_noop_option()
         self.data_offset += (o_length + 2) / 4
         if self.data_offset > 15:
-            raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+            raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
         self.options.append(opt)
 
 
@@ -790,11 +791,13 @@ class TCPSegment(layer4.Base):
         self.options.append(opt)
         self.data_offset += 1
         if self.data_offset > 15:
-            raise errors.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+            raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
-class TCPHandler():
+class TCPHandler(ipv4.IPv4Handler):
     '''
+    Convenience layer for TCP functions
+
     A take on implementing basic custom TCP connection management
 
     RFCs:   793     TCP core RFC
@@ -826,12 +829,13 @@ class TCPHandler():
     TIME_WAIT = 10
 
 
-    def __init__(self, local_port, remote_port):
+    def __init__(self, interface, buf_sz=65536, local_port=None,
+                 remote_port=None, block=1, t_out=3.0):
         '''
         initialize TCP connection parameters
         '''
-        self._tcb = {'local_port': 0,
-                     'remote_port': 0,
+        self._tcb = {'local_port': local_port,
+                     'remote_port': remote_port,
                      'send_buffer': None,
                      'recv_buffer': None,
                      'rtx_queue': None,
@@ -847,4 +851,53 @@ class TCPHandler():
                      'rcv_wnd': 0,
                      'rcv_up': 0,
                      'rcv_isn': 0}
-        self._state = self.CLOSED
+        self.state = self.CLOSED
+        self.mss = self.mtu - 60
+        super().__init__(interface)
+
+
+    def send_segment(self, segment, dont_frag=True):
+        '''
+        Send a single TCP segment to remote host
+        Remote port and remote IP must be set appropriately
+
+        :param data: <bytes> Payload data
+        '''
+        if self._tcb.get('remote_port', None) is None:
+            raise err.InvalidPortException('remote TCP port missing')
+
+        if self.remote_ip is None:
+            raise err.InvalidIPv4AddrException('None')
+
+        if len(segment.payload) > self.mss:
+            raise err.MSSExceededException('{} Bytes > {}'.format(
+                len(segment.payload), self.mtu)
+
+        bytes_sent = super().send(segment, dont_frag) - segment.data_offset * 4
+
+
+    def receive_segment(self, pass_on_error=True):
+        '''
+        Reveive a single TCP segment
+        local port and local IP must be set appropriately
+
+        :param pass_on_error: <bool> return None if non-blocking socket does
+                                     not receive anything
+        '''
+        if self._tcb.get('local_port', None) is None:
+            raise err.InvalidPortException('local TCP port missing')
+
+        if self.local_ip is None:
+            raise err.InvalidIPv4AddrException('None')
+
+        packet = super().receive(pass_on_error)
+
+        if packet is None:
+            return None
+
+        segment = TCPSegment.from_packet(packet)
+
+        if segment.dst_port != self._tcb['local_port']:
+            return None
+
+        return segment

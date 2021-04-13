@@ -770,6 +770,7 @@ class IPv4Handler(eth.EthernetHandler):
             self._local_ip = src_ip
         local_mac = tools.get_mac_addr(interface)
         self._protocol = proto
+
         # fragment dictionary for reassembly
         # {
         #   identification_1: {'written': [(ind, len)],
@@ -778,6 +779,7 @@ class IPv4Handler(eth.EthernetHandler):
         #   identification_2: ...
         # }
         self._frag_list = {}
+
         self._next_id = randrange(65536)
 
         super().__init__(interface, None, 0x0800, local_mac, None, None,
@@ -856,6 +858,7 @@ class IPv4Handler(eth.EthernetHandler):
     def send(self, dgram, dont_frag=False):
         '''
         Send datagram via an IPv4Packet
+
         :param dgram: datagram
         :param dont_frag: set DF flag?
         '''
@@ -905,10 +908,12 @@ class IPv4Handler(eth.EthernetHandler):
 
     def receive(self, pass_on_error=True, promisc=False):
         '''
-        Receive next packet that belongs to this connection, i.e. either set
-        packet to None or IPv4Packet object created from received frame
+        Receive next packet, i.e. either set packet to None or IPv4Packet
+        object created from received frame
+
         Return True if a full packet is received and false if only a fragment
         or nothing suitable has been received
+
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
         :any_source: <bool> accept packets from any source
         :promisc: <bool> receive packets that are not for us
@@ -917,7 +922,7 @@ class IPv4Handler(eth.EthernetHandler):
 
         if frame is None:
             return None
-        
+
         # frame_type != 4 -> don't process frames that we have sent
         if frame_type != 4 and frame is not None:
             ip4_pk = IPv4Packet.from_frame(frame)

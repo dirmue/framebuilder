@@ -1,5 +1,29 @@
 '''Module for custom exceptions'''
 
+class MSSExceededException(Exception):
+    '''
+    Exception is raised if maximum segment size is exceeded
+    '''
+    def __init__(self, err_msg):
+        self.err_msg = err_msg
+        super().__init__(err_msg)
+
+    def __str__(self):
+        return 'MSS exceeded: {}'.format(self.err_msg)
+
+
+class InvalidPortException(Exception):
+    '''
+    Exception is raised if UDP/TCP port is invalid or not existing
+    '''
+    def __init__(self, err_msg):
+        self.err_msg = err_msg
+        super().__init__(err_msg)
+
+    def __str__(self):
+        return 'Invalid port number: {}'.format(self.err_msg)
+
+
 class FailedMACQueryException(Exception):
     '''
     Exception is raised if no MAC address for a destination IP address can be
