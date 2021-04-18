@@ -434,3 +434,31 @@ def get_rfc793_isn():
     (but simple) RFC793 timer method
     '''
     return (int(time.time_ns() // 1e6) >> 2) & 0xfffffff
+
+
+def tcp_sn_lt(val1, val2):
+    '''
+    Is TCP sequence number val1 lower than val2 according to RFC 1982?
+    :param val1: first sequence number
+    :param val2: second sequence number
+    '''
+    return (val1 < val2 and val2 - val1 < 2**31) or \
+           (val1 > val2 and val1 - val2 > 2**31)
+
+
+def tcp_sn_gt(val1, val2):
+    '''
+    Is TCP sequence number val1 greater than val2 according to RFC 1982?
+    :param val1: first sequence number
+    :param val2: second sequence number
+    '''
+    return (val1 < val2 and val2 - val1 > 2**31) or \
+           (val1 > val2 and val1 - val2 < 2**31)
+
+
+def get_local_tcp_port():
+    '''
+    Return the next available TCP client port
+    TODO!
+    '''
+    return 33333

@@ -1,5 +1,6 @@
 '''Module for TCP functions used by custompk'''
 
+import queue as q
 from time import time_ns
 from framebuilder import tools, errors as err, layer4, ipv4
 
@@ -814,69 +815,359 @@ class TCPHandler(ipv4.IPv4Handler):
     - local port selection for client connections
     '''
 
-
     # define connection state constants
+    
+    # no connection state at all
     CLOSED = 0
+
+    # represents waiting for a connection request from any remote TCP and port
     LISTEN = 1
+
+    # represents waiting for a matching connection request after having sent a
+    # connection request
     SYN_SENT = 2
+
+    # represents waiting for a confirming connection request acknowledgment
+    # after having both received and sent a connection request
     SYN_RECEIVED = 3
+
+    # represents an open connection, data received can be delivered to the 
+    # user; the normal state for the data transfer phase of the connection.
     ESTABLISHED = 4
+
+    # represents waiting for a connection termination request from the remote
+    # TCP, or an acknowledgment of the connection termination request 
+    # previously sent
     FIN_WAIT_1 = 5
+
+    # represents waiting for a connection termination request from remote TCP
     FIN_WAIT_2 = 6
+
+    # represents waiting for a connection termination request from the local
+    # user
     CLOSE_WAIT = 7
+
+    # represents waiting for a connection termination request acknowledgment 
+    # from the remote TCP
     CLOSING = 8
+
+    # represents waiting for an acknowledgment of the connection termination
+    # request previously sent to the remote TCP (which includes an 
+    # acknowledgment of its connection termination request)
     LAST_ACK = 9
+
+    # represents waiting for enough time to pass to be sure the remote TCP 
+    # received the acknowledgment of its connection termination request
+    # -- not implemented here --
     TIME_WAIT = 10
 
 
-    def __init__(self, interface, buf_sz=65536, local_port=None,
-                 remote_port=None, block=1, t_out=3.0):
+    def __init__(self, interface, local_port=None, remote_ip=None, block=1,
+                 t_out=3.0):
         '''
         initialize TCP connection parameters
+
+        :param interface: <str> local interface (name or address)
+        :param local_port: local port
+
+        Send Sequence Space
+
+                   1         2          3          4
+              ----------|----------|----------|----------
+                     SND.UNA    SND.NXT    SND.UNA
+                                          +SND.WND
+
+        Receive Sequence Space
+
+                       1          2          3
+                   ----------|----------|----------
+                          RCV.NXT    RCV.NXT
+                                    +RCV.WND
         '''
-        self._tcb = {'local_port': local_port,
-                     'remote_port': remote_port,
-                     'send_buffer': None,
-                     'recv_buffer': None,
-                     'rtx_queue': None,
-                     'current_seg': 0,
-                     'snd_una': 0,
-                     'snd_nxt': 0,
-                     'snd_wnd': 0,
-                     'snd_up': 0,
-                     'snd_wl1': 0,
-                     'snd_wl2': 0,
-                     'snd_isn': 0,
-                     'rcv_nxt': 0,
-                     'rcv_wnd': 0,
-                     'rcv_up': 0,
-                     'rcv_isn': 0}
+        self._interface = interface
+        self._local_port = local_port
+        self._remote_port = None
+        self._remote_ip = remote_ip
+        
+        # retransmission Queue
+        self._rtx_queue = q.Queue(0)
+        
+        # lowest unacknowledged sequence number
+        self._snd_una = None
+
+        # sequence number of next segment to be sent
+        self._snd_nxt = None
+
+        # send window size
+        # snd_una + snd_wnd = upper boundary of allowed sequence number space
+        self._snd_wnd = None
+
+        # send urgent pointer
+        self._snd_up = None
+
+        # sequence number used for last window update
+        self._snd_wl1 = None
+
+        # acknowledgement number used for last window update
+        self._snd_wl2 = None
+
+        # initial send sequence number
+        self._iss = tools.get_rfc793_isn()
+
+        # sequence number of next segment to be received
+        self._rcv_next = None
+
+        # receive window
+        self._rcv_wnd = None
+
+        # receive urgent pointer
+        self._rcv_up = None
+
+        # initial receive sequence number
+        self._irs = None
+
         self.state = self.CLOSED
         self.mss = self.mtu - 60
-        super().__init__(interface)
+
+        # list of functions to be implemented that handle incoming packets
+        # in different connection states
+        self._recv_seg_handlers = {
+                self.LISTEN: self.__recv_listen,
+                self.SYN_SENT: self.__recv_syn_sent,
+                self.SYN_RECEIVED: self.__recv_syn_recv,
+                self.ESTABLISHED: self.__recv_established,
+                self.FIN_WAIT_1: self.__recv_fin_wait1,
+                self.FIN_WAIT_2: self.__recv_fin_wait2,
+                self.CLOSE_WAIT: self.__recv_close_wait,
+                self.CLOSING: self.__recv_closing,
+                self.LAST_ACK: self.__recv_last_ack
+                }
+
+        super().__init__(interface, remote_ip)
 
 
-    def send_segment(self, segment, dont_frag=True):
+    def __get_remote_port(self):
         '''
-        Send a single TCP segment to remote host
-        Remote port and remote IP must be set appropriately
-
-        :param data: <bytes> Payload data
+        Getter for remote port
         '''
+        return self._remote_port
+
+
+    def __set_remote_port(self, remote_port):
+        '''
+        Setter for remote port
+        '''
+        if self._remote_port is not None:
+            self._remote_port = remote_port
+
+    remote_port = property(__get_remote_port, __set_remote_port)
+
+    
+    def __get_local_port(self):
+        '''
+        Getter for local port
+        '''
+        return self._local_port
+
+
+    def __set_local_port(self, local_port):
+        '''
+        Setter for local port
+        '''
+        if self._local_port is not None:
+            self._local_port = local_port
+
+    remote_port = property(__get_local_port, __set_local_port)
+
+
+    @classmethod
+    def listen(cls, interface, local_port):
+        '''
+        Wait for incoming connections on interface and local port
+        :param interface: interface (name or address) to listen on
+        :param local_port: port number to bind to
+        '''
+        handler = cls(inteface, local_port)
+        handler.state = cls.LISTEN
+        while True:
+            handler.__receive_segment()
+            if handler.state == cls.ESTABLISHED:
+                return handler
+
+    
+    def open(self, remote_ip, remote_port, local_port=None):
+        '''
+        Establish a TCP connection to a remote TCP server and return a new
+        TCP Handler
+
+        :param remote_ip: IP address of the server
+        :param remote_port: TCP port to connect to
+        '''
+        if self.state != self.CLOSED:
+            raise err.NoTCPConnectionException('open() while status not closed')
+        rt_info = tools.get_route(remote_ip)
+        self.interface = rt_info['dev']
+        local_ip = rt_info['prefsrc']
+        if local_port is not None:
+            self.local_port = local_port
+        else:
+            self.local_port = tools.get_local_tcp_port()
+        self.remote_ip = remote_ip
+        self.remote_port = remote_port
+        segment = TCPSegment()
+        segment.src_port = self.local_port
+        segment.dst_port = self.remote_port
+        segment.syn = 1
+        self.__send_segment(segment)
+        self.state = self.SYN_SENT
+        while True:
+            self.__receive_segment()
+            if self.state == self.ESTABLISHED:
+                break
+
+
+    def receive(self, buf_sz, pass_on_error=True):
+        '''
+        Receive buf_sz bytes of data
+        '''
+        if self.state == self.CLOSED:
+            raise err.NoTCPConnectionException('receive() while status closed')
+        segment = self.__receive_segment(pass_on_error)
+
+
+    def send(self, data):
+        '''
+        Send data over a TCP connection
+        '''
+        if self.state == self.CLOSED:
+            raise err.NoTCPConnectionException('send() while status closed')
+        
         if self._tcb.get('remote_port', None) is None:
             raise err.InvalidPortException('remote TCP port missing')
 
         if self.remote_ip is None:
             raise err.InvalidIPv4AddrException('None')
-
-        if len(segment.payload) > self.mss:
-            raise err.MSSExceededException('{} Bytes > {}'.format(
-                len(segment.payload), self.mtu)
-
-        bytes_sent = super().send(segment, dont_frag) - segment.data_offset * 4
+        pass
 
 
-    def receive_segment(self, pass_on_error=True):
+    def close(self):
+        '''
+        Close the connection
+        '''
+        pass
+
+
+    def abort(self):
+        '''
+        Reset the connection
+        '''
+        pass
+
+
+    def __recv_listen(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in LISTEN state
+        :param packet: Incoming packet
+        '''
+        segment = TCPSegment.from_packet(packet)
+        
+        if segment.dst_port != self.local_port:
+            return None
+
+        if segment.ack == 0:
+            if segment.syn == 1:
+                self.remote_ip = packet.src_addr
+                self.remote_port = segment.src_port
+                self._rcv_next = (segment.seq_nr + 1) % 2 ** 32
+                self.state = self.SYN_RECEIVED
+                answer = TCPSegment()
+                answer.src_port = self.local_port
+                answer.dst_port = segment.src_port
+                answer.syn = 1
+                answer.ack = 1
+                answer.seq_nr = self._iss
+                answer.ack_nr = self._rcv_next
+                self._snd_una = self._iss
+                self.__send_segment(answer)
+                return segment
+        return None
+
+
+    def __recv_syn_sent(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in SYN_SENT state
+        :param packet: Incoming packet
+        '''
+        pass
+
+
+    def __recv_syn_recv(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in SYN_RECV state
+        :param packet: Incoming packet
+        '''
+        pass
+
+
+    def __recv_established(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in ESTABLISHED state
+        :param packet: Incoming packet
+        '''
+        pass
+    
+
+    def __recv_fin_wait1(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in FIN_WAIT1 state
+        :param packet: Incoming packet
+        '''
+        pass
+    
+
+    def __recv_fin_wait2(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in FIN_WAIT2 state
+        :param packet: Incoming packet
+        '''
+        pass
+    
+
+    def __recv_close_wait(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in CLOSE_WAIT state
+        :param packet: Incoming packet
+        '''
+        pass
+
+
+    def __recv_closing(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in CLOSING state
+        :param packet: Incoming packet
+        '''
+        pass
+
+
+    def __recv_last_ack(self, packet: ipv4.IPv4Packet):
+        '''
+        Process incoming packet in LAST_ACK state
+        :param packet: Incoming packet
+        '''
+        pass
+    
+
+    def __send_segment(self, segment, dont_frag=True):
+        '''
+        Send a single TCP segment to remote host
+        Remote port and remote IP must be set appropriately
+
+        :param segment: <TCPSegment> segment to send
+        '''
+        return super().send(segment, dont_frag) - segment.data_offset * 4
+
+
+    def __receive_segment(self, pass_on_error=True):
         '''
         Reveive a single TCP segment
         local port and local IP must be set appropriately
@@ -884,6 +1175,10 @@ class TCPHandler(ipv4.IPv4Handler):
         :param pass_on_error: <bool> return None if non-blocking socket does
                                      not receive anything
         '''
+        if self.state == self.CLOSED:
+            # this should never happen
+            return None
+
         if self._tcb.get('local_port', None) is None:
             raise err.InvalidPortException('local TCP port missing')
 
@@ -895,9 +1190,33 @@ class TCPHandler(ipv4.IPv4Handler):
         if packet is None:
             return None
 
-        segment = TCPSegment.from_packet(packet)
+        return self._recv_seg_handlers[self.state](packet)
 
-        if segment.dst_port != self._tcb['local_port']:
-            return None
 
-        return segment
+    def is_in_rcv_seq_space(self, segment: TCPSegment):
+        '''
+        Check if incoming TCP segment lies within receive sequence space
+        :param segment: <TCPSegment> incoming TCP segment
+        '''
+        seg_length = len(segment.payload)
+        
+        if self._rcv_wnd == 0:
+            if seg_length == 0:
+                return segment.seq_nr == self._rcv_next
+            return False
+        else:
+            if seg_length == 0:
+                return (self._rcv_next == segment.seq_nr or \
+                        tools.tcp_sn_lt(self._rcv_next, segment.seq_nr)) and \
+                        tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
+                                        segment.seq_nr)
+            else:
+                return (self._rcv_next == segment.seq_nr or \
+                        tools.tcp_sn_lt(self._rcv_next, segment.seq_nr)) and \
+                        tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
+                                        segment.seq_nr) or \
+                       (self._rcv_next == segment.seq_nr + seg_length - 1 or \
+                        tools.tcp_sn_lt(self._rcv_next, 
+                                        segment.seq_nr + seg_length - 1)) and \
+                        tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
+                                        segment.seq_nr + seg_length - 1)

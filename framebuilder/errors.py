@@ -1,5 +1,18 @@
 '''Module for custom exceptions'''
 
+class NoTCPConnectionException(Exception):
+    '''
+    Exception is raised if send() or receive() are called in TCPHandler while
+    the connection is in an invalid state
+    '''
+    def __init__(self, err_msg):
+        self.err_msg = err_msg
+        super().__init__(err_msg)
+
+    def __str__(self):
+        return 'TCP connection state invalid: {}'.format(self.err_msg)
+
+
 class MSSExceededException(Exception):
     '''
     Exception is raised if maximum segment size is exceeded
