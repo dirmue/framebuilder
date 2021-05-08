@@ -296,6 +296,58 @@ def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
         print(ex)
 
 
+def hide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp'):
+    '''
+    Block all incoming packets for this connection on interface in order to
+    prevent the kernel from interfering with this connection.
+
+    Attention: Make sure to unhide the port again and be aware that this can
+               interfere with other services!
+    :param in_iface: <str> inbound interface
+    :param local_ip: <str> local IP adress
+    :param local_port: <int> local port
+    :param proto: <str> protocol (tcp, udp, icmp or all)
+    '''
+    if proto not in ['tcp', 'udp', 'icmp']:
+        proto = 'all'
+    try:
+        if proto != 'icmp':
+            cmd = 'iptables -A INPUT -i {} -p {} -d {} --dport {} -j DROP'
+            os.system(cmd.format(in_iface, proto, local_ip, local_port))
+        else:
+            cmd = 'iptables -A INPUT -i {} -p {} -d {} -j DROP'
+            os.system(cmd.format(in_iface, proto, local_ip))
+    except Exception as ex:
+        print(ex)
+
+
+def unhide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp', delay=1):
+    '''
+    Removes the iptable rule that was created by hide_from_kernel. As there
+    still might be incoming packets (e.g. ACKs), it is reasonable to wait some
+    time before removing the rule.
+    :param in_iface: <str> inbound interface
+    :param local_ip: <str> local IP adress
+    :param local_port: <int> local port
+    :param proto: <str> protocol (tcp, udp, icmp or all)
+    :param delay: <float> delay before removing the rule in seconds
+    '''
+    # ignore Ctrl-C during delay
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    if proto not in ['tcp', 'udp', 'icmp']:
+        proto = 'all'
+    try:
+        time.sleep(delay)
+        if proto != 'icmp':
+            cmd = 'iptables -D INPUT -i {} -p {} -d {} --dport {} -j DROP'
+            os.system(cmd.format(in_iface, proto, local_ip, local_port))
+        else:
+            cmd = 'iptables -D INPUT -i {} -p {} -d {} -j DROP'
+            os.system(cmd.format(in_iface, proto, local_ip))
+    except Exception as ex:
+        print(ex)
+
+
 def get_ip_dict_list(ip_cmd):
     '''
     Returns the output of an iproute2 command as list of dictionaries
@@ -462,3 +514,10 @@ def get_local_tcp_port():
     TODO!
     '''
     return 33333
+
+
+def mod32(value: int):
+    '''
+    Wrap around if value is greater that 2 ** 32 - 1
+    '''
+    return value % 2 ** 32
