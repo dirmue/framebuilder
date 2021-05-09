@@ -957,7 +957,8 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.FIN_WAIT_2: self.__recv_fin_wait2,
                 self.CLOSE_WAIT: self.__recv_close_wait,
                 self.CLOSING: self.__recv_closing,
-                self.LAST_ACK: self.__recv_last_ack
+                self.LAST_ACK: self.__recv_last_ack,
+                self.TIME_WAIT: self.__recv_time_wait
                 }
 
         super().__init__(interface, remote_ip, block=block, t_out=t_out)
@@ -1107,8 +1108,7 @@ class TCPHandler(ipv4.IPv4Handler):
         Reset the connection
         '''
         pass
-
-
+    
     def __send_ack(self, answer: TCPSegment):
         '''
         Send acknowledgement
@@ -1123,10 +1123,6 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.window = self._rcv_wnd
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
-        self._snd_nxt = tools.mod32(self._snd_nxt + answer.length)
-        if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
-            if answer.length == 0:
-                self._snd_nxt = tools.mod32(self._snd_nxt + 1)
         return self.send_segment(answer)
 
 
@@ -1146,19 +1142,8 @@ class TCPHandler(ipv4.IPv4Handler):
             if all(conditions):
                 self._irs = segment.seq_nr
                 self.remote_port = segment.src_port
-                self._rcv_next = tools.mod32(segment.seq_nr + 1)
                 self.state = self.SYN_RECEIVED
                 return segment
-            else:
-                # send reset
-                ack = TCPSegment()
-                ack.src_port = self.local_port
-                ack.dst_port = segment.src_port
-                ack.rst = 1
-                ack.window = 0
-                ack.seq_nr = self._iss
-                ack.ack_nr = self._rcv_next
-                self.send_segment(ack)
         return None
 
 
@@ -1167,7 +1152,22 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segmnt in SYN_SENT state
         :param packet: Incoming packet
         '''
-        pass
+        conditions = (
+                segment.ack == 1,
+                segment.rst == 0,
+                segment.fin == 0,
+                segment.syn == 1
+                )
+
+        if segment.dst_port == self.local_port:
+            if all(conditions):
+                self._irs = segment.seq_nr
+                self.remote_port = segment.src_port
+                self.state = self.ESTABLISHED
+                return segment
+            elif segment.rst == 1:
+                self.state = self.CLOSED
+        return None
 
 
     def __recv_syn_recv(self, segment: TCPSegment):
@@ -1178,21 +1178,18 @@ class TCPHandler(ipv4.IPv4Handler):
         conditions = (
                 segment.ack == 1,
                 segment.rst == 0,
-                segment.fin == 0
+                segment.fin == 0,
+                segment.syn == 0
                 )
 
         if segment.dst_port == self._local_port:
             if all(conditions):
-                if not self._is_in_rcv_seq_space(segment):
-                    return None
-                self._rcv_next = tools.mod32(segment.seq_nr + 1)
                 self.state = self.ESTABLISHED
                 return segment
             elif segment.rst == 1:
                 self.state = self.LISTEN
                 return None
             elif segment.fin == 1:
-                self._rcv_next = tools.mod32(segment.seq_nr + 1)
                 self.state = self.FIN_WAIT_1
                 return segment
         return None
@@ -1203,20 +1200,17 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in ESTABLISHED state
         :param packet: Incoming packet
         '''
-        if not self._is_in_rcv_seq_space(segment):
-            return None
-        if segment.dst_port != self._local_port:
-            return None
-        if segment.ack == 0 or segment.syn == 1:
-            return None
-        if segment.fin == 1:
-            self._rcv_next = tools.mod32(segment.seq_nr + segment.length + 1)
-            self.state = self.CLOSE_WAIT
-            return segment
-        if segment.seq_nr == self._rcv_next:
-            self._rcv_wnd = len(self._recv_buffer) - segment.length
-            self._rcv_next = tools.mod32(segment.seq_nr + segment.length + 1)
-            return segment
+        conditions = (
+                segment.ack == 1,
+                segment.rst == 0,
+                segment.syn == 0
+                )
+        
+        if segment.dst_port == self._local_port:
+            if all(conditions):
+                if segment.fin == 1:
+                    self.state = self.CLOSE_WAIT
+                return segment
         return None
 
 
@@ -1225,7 +1219,21 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in FIN_WAIT1 state
         :param packet: Incoming packet
         '''
-        pass
+        conditions = (
+                segment.ack == 1,
+                segment.rst == 0,
+                segment.syn == 0
+                )
+
+        if segment.dst_port == self.local_port:
+            if all(conditions):
+                self.state = self.FIN_WAIT_2
+                if segment.fin == 1:
+                    self.state = self.CLOSING
+                return segment
+            elif segment.rst == 1:
+                self.state = self.CLOSED
+        return None
 
 
     def __recv_fin_wait2(self, segment: TCPSegment):
@@ -1233,7 +1241,20 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in FIN_WAIT2 state
         :param packet: Incoming packet
         '''
-        pass
+        conditions = (
+                segment.ack == 1,
+                segment.rst == 0,
+                segment.syn == 0,
+                segment.fin == 1
+                )
+
+        if segment.dst_port == self.local_port:
+            if all(conditions):
+                self.state = self.TIME_WAIT
+                return segment
+            elif segment.rst == 1:
+                self.state = self.CLOSED
+        return None
 
 
     def __recv_close_wait(self, segment: TCPSegment):
@@ -1250,10 +1271,9 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if segment.dst_port == self._local_port:
             if all(conditions):
-                if not self._is_in_rcv_seq_space(segment):
-                    return None
-                self._rcv_next = tools.mod32(segment.seq_nr + 1)
                 return segment
+            elif segment.rst == 1:
+                self.state = self.CLOSED
         return None
 
 
@@ -1262,7 +1282,29 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in CLOSING state
         :param packet: Incoming packet
         '''
-        pass
+        conditions = (
+                segment.ack == 1
+                )
+
+        if segment.dst_port == self._local_port:
+            if all(conditions):
+                self.state = self.CLOSED
+                return segment
+        return None
+
+
+    def __recv_time_wait(self, segment: TCPSegment):
+        '''
+        Process incoming segment in TIME_WAIT state
+        :param packet: Incoming packet
+        '''
+        conditions = (
+                segment.ack == 1
+                )
+
+        if segment.dst_port == self._local_port:
+            return segment
+        return None
 
 
     def __recv_last_ack(self, segment: TCPSegment):
@@ -1270,8 +1312,18 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in LAST_ACK state
         :param packet: Incoming packet
         '''
-        tools.unhide_from_kernel(self.interface, self.remote_ip, 
-                self.remote_port)
+        conditions = (
+                segment.ack == 1
+                )
+
+        if segment.dst_port == self._local_port:
+            if all(conditions):
+                self.state = self.CLOSED
+                if segment.rst != 1:
+                    return segment
+                tools.unhide_from_krnl_in(self.interface, self.local_ip, 
+                        self.local_port)
+        return None
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1309,11 +1361,20 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         segment = TCPSegment.from_packet(packet)
+        if not self._is_in_rcv_seq_space(segment):
+            # dismiss segment right away if it is outside receive sequence space
+            return None
+        
         next_seg = self._recv_seg_handlers[self.state](segment)
+        
         if next_seg is not None:
             self._recv_buffer.extend(next_seg.payload)
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
+            self._snd_nxt = tools.mod32(self._snd_nxt + next_seg.length)
+            if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
+                if next_seg.length == 0:
+                    self._snd_nxt = tools.mod32(self._snd_nxt + 1)
             ack = TCPSegment()
             self.__send_ack(ack)
             return next_seg.length
