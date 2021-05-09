@@ -973,7 +973,22 @@ class TCPHandler(ipv4.IPv4Handler):
                 handler.local_port)
 
 
-    def __get_remote_port(self):
+    def info(self):
+        '''
+        Print debugging inormation
+        '''
+        print('MTU: {} -- RCV WIN: {} -- STATE: {}'.format(self.mtu,
+            self._rcv_wnd, self.state))
+        print('LOCAL ADDR:', self.local_ip, self.local_port)
+        print('REMOTE ADDR:', self.remote_ip, self.remote_port)
+        print('ISN:', self._iss)
+        print('NEXT RCV SEQNR:', self._rcv_next)
+        print('RCV BUFFER LEN:', len(self._recv_buffer))
+        print('NEXT SND SEQNR:', self._snd_nxt)
+        print('UNACK:', self._snd_una)
+
+
+def __get_remote_port(self):
         '''
         Getter for remote port
         '''
