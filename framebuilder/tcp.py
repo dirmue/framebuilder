@@ -1114,6 +1114,12 @@ class TCPHandler(ipv4.IPv4Handler):
         Send acknowledgement
         '''
         answer.ack = 1
+        if len(self._send_buffer) > self._mss:
+            answer.payload = self._send_buffer[0:self._mss]
+            self._send_buffer = self._send_buffer[self._mss:]
+        else:
+            answer.payload = self._send_buffer[0:len(self._send_buffer)]
+            self._send_buffer = self._send_buffer[len(self._send_buffer):]
         if self.state == self.CLOSE_WAIT:
             answer.fin = 1
         if self.state == self.SYN_RECEIVED:
@@ -1326,6 +1332,24 @@ class TCPHandler(ipv4.IPv4Handler):
         return None
 
 
+    def __process_rtx_queue(self, dont_frag=True):
+        '''
+        resend unacknowledged segments
+        '''
+        not_exceeded = []
+        while True:
+            try:
+                next_elem = self._rtx_queue.get_nowait()
+                if next_elem[0] + self._rtx_timer < time_ns():
+                    next_elem[0] = time_ns()
+                    super().send(next_elem[1], dont_frag)
+                not_exceeded.append(next_elem)
+            except queue.Empty:
+                break
+        for next_elem in not_exceeded:
+            self._rtx_timer.put(next_elem)
+
+
     def send_segment(self, segment, dont_frag=True):
         '''
         Send a single TCP segment to remote host
@@ -1333,6 +1357,12 @@ class TCPHandler(ipv4.IPv4Handler):
 
         :param segment: <TCPSegment> segment to send
         '''
+        ack_len = segment.length
+        if ack_len == 0 and (segment.syn == 1 or segment.fin == 1):
+            ack_len = 1
+        if ack_len > 0:
+            self._rtx_queue.put((time_ns(), segment))
+            self._snd_una = tools.mod32(self._snd_una + ack_len)
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1344,6 +1374,8 @@ class TCPHandler(ipv4.IPv4Handler):
         :param pass_on_error: <bool> return None if non-blocking socket does
                                      not receive anything
         '''
+        self.__process_rtx_queue()
+
         if self.state == self.CLOSED:
             # this should never happen
             return None
@@ -1373,10 +1405,10 @@ class TCPHandler(ipv4.IPv4Handler):
             self._recv_buffer.extend(next_seg.payload)
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
-            self._snd_nxt = tools.mod32(self._snd_nxt + next_seg.length)
+            self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
             if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
                 if next_seg.length == 0:
-                    self._snd_nxt = tools.mod32(self._snd_nxt + 1)
+                    self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
             ack = TCPSegment()
             self.__send_ack(ack)
             return next_seg.length
