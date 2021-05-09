@@ -1147,6 +1147,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.dst_port == self.local_port:
             if all(conditions):
                 self._irs = segment.seq_nr
+                self._rcv_next = self._irs
                 self.remote_port = segment.src_port
                 self.state = self.SYN_RECEIVED
                 return segment
