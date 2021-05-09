@@ -1405,10 +1405,10 @@ class TCPHandler(ipv4.IPv4Handler):
             self._recv_buffer.extend(next_seg.payload)
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
-            self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
+            self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
             if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
                 if next_seg.length == 0:
-                    self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
+                    self._rcv_next = tools.mod32(self._rcv_next + 1)
             ack = TCPSegment()
             self.__send_ack(ack)
             return next_seg.length
