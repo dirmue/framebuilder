@@ -1130,7 +1130,6 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.dst_port == self.local_port:
             if all(conditions):
                 self._irs = segment.seq_nr
-                self.remote_ip = packet.src_addr
                 self.remote_port = segment.src_port
                 self._rcv_next = tools.mod32(segment.seq_nr + 1)
                 self.state = self.SYN_RECEIVED
@@ -1298,9 +1297,12 @@ class TCPHandler(ipv4.IPv4Handler):
         next_seg = self._recv_seg_handlers[self.state](segment)
         if next_seg is not None:
             self._recv_buffer.extend(next_seg.payload)
+            if self.state == self.SYN_RECEIVED:
+                self.remote_ip = packet.src_addr
             ack = TCPSegment()
             self.__send_ack(ack)
-        return next_seg.length
+            return next_seg.length
+        return None
 
 
     def _is_in_rcv_seq_space(self, segment: TCPSegment):
