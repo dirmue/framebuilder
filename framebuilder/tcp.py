@@ -1348,7 +1348,7 @@ class TCPHandler(ipv4.IPv4Handler):
             except q.Empty:
                 break
         for next_elem in not_exceeded:
-            self._rtx_timer.put(next_elem)
+            self._rtx_queue.put(next_elem)
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1410,6 +1410,10 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
                 if next_seg.length == 0:
                     self._rcv_next = tools.mod32(self._rcv_next + 1)
+            #debug
+            self.info()
+            next_seg.info()
+            
             ack = TCPSegment()
             self.__send_ack(ack)
             return next_seg.length
