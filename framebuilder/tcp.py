@@ -988,7 +988,7 @@ class TCPHandler(ipv4.IPv4Handler):
         print('UNACK:', self._snd_una)
 
 
-def __get_remote_port(self):
+    def __get_remote_port(self):
         '''
         Getter for remote port
         '''
