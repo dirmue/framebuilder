@@ -1344,7 +1344,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     next_elem[0] = time_ns()
                     super().send(next_elem[1], dont_frag)
                 not_exceeded.append(next_elem)
-            except queue.Empty:
+            except q.Empty:
                 break
         for next_elem in not_exceeded:
             self._rtx_timer.put(next_elem)
