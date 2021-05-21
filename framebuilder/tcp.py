@@ -1101,8 +1101,13 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.CLOSED:
             raise err.NoTCPConnectionException('receive() while status closed')
         segment = self.receive_segment(pass_on_error)
-        if segment is not None:
-            print('<---', segment.length, 'Bytes')
+        
+        # TODO: think about correct buffer handling
+        if len(self._recv_buffer) > 0:
+            data = self._recv_buffer
+            self._recv_buffer.clear()
+            return data
+        return b''
 
 
     def send(self, data):
