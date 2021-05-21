@@ -982,7 +982,7 @@ class TCPHandler(ipv4.IPv4Handler):
         Print debugging inormation
         '''
         print('MTU: {} -- RCV WIN: {} -- STATE: {}'.format(self.mtu,
-            self._rcv_wnd, self.state))
+            self._rcv_wnd, self.get_state_str()))
         print('LOCAL ADDR:', self.local_ip, self.local_port)
         print('REMOTE ADDR:', self.remote_ip, self.remote_port)
         print('ISN:', self._iss)
@@ -990,6 +990,23 @@ class TCPHandler(ipv4.IPv4Handler):
         print('RCV BUFFER LEN:', len(self._recv_buffer))
         print('NEXT SND SEQNR:', self._snd_nxt)
         print('UNACK:', self._snd_una)
+
+    
+    def get_state_str(self):
+        stat = {
+            self.CLOSED: 'closed',
+            self.LISTEN: 'listen',
+            self.SYN_SENT: 'SYN sent',
+            self.SYN_RECEIVED: 'SYN received',
+            self.ESTABLISHED: 'established',
+            self.FIN_WAIT_1: 'FIN wait 1',
+            self.FIN_WAIT_2: 'FIN wait 2',
+            self.CLOSE_WAIT: 'close wait',
+            self.CLOSING: 'closing',
+            self.LAST_ACK: 'last ACK',
+            self.TIME_WAIT: 'time wait'
+            }
+        return stat.get(self.state, 'unknown!')
 
 
     def __get_remote_port(self):
@@ -1083,8 +1100,7 @@ class TCPHandler(ipv4.IPv4Handler):
             raise err.NoTCPConnectionException('receive() while status closed')
         segment = self.receive_segment(pass_on_error)
         if segment is not None:
-            print('<-------------------')
-            segment.info()
+            print('<---', segment.length, 'Bytes')
 
 
     def send(self, data):
@@ -1408,10 +1424,12 @@ class TCPHandler(ipv4.IPv4Handler):
             self._recv_buffer.extend(next_seg.payload)
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
+            
             self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
             if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
                 if next_seg.length == 0:
                     self._rcv_next = tools.mod32(self._rcv_next + 1)
+            
             # remove acknowledged segments from rtx_queue
             index = 0
             for rtx_entry in self._rtx_queue:
@@ -1420,6 +1438,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     self._rtx_queue.remove(self._rtx_queue[index])
                 index += 1
             self._snd_una = next_seg.ack_nr
+            
             #debug
             self.info()
             next_seg.info()
