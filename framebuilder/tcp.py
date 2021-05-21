@@ -1082,15 +1082,8 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.CLOSED:
             raise err.NoTCPConnectionException('receive() while status closed')
         segment = self.receive_segment(pass_on_error)
-        if segment is not None:
-            index = 0
-            for rtx_entry in self._rtx_queue:
-                if segment.ack_nr >= tools.mod32(rtx_entry['segment'].seq_nr + \
-                                                 rtx_entry['segment'].length):
-                    self._rtx_queue.remove(self._rtx_queue[index])
-                index += 1
-            self._snd_una = segment.ack_nr
-        self.__process_rtx_queue()
+        print('<-------------------')
+        segment.info()
 
 
     def send(self, data):
@@ -1383,6 +1376,7 @@ class TCPHandler(ipv4.IPv4Handler):
         :param pass_on_error: <bool> return None if non-blocking socket does
                                      not receive anything
         '''
+        self.__process_rtx_queue()
 
         if self.state == self.CLOSED:
             # this should never happen
@@ -1417,6 +1411,14 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
                 if next_seg.length == 0:
                     self._rcv_next = tools.mod32(self._rcv_next + 1)
+            # remove acknowledged segments from rtx_queue
+            index = 0
+            for rtx_entry in self._rtx_queue:
+                if next_seg.ack_nr >= tools.mod32(rtx_entry['segment'].seq_nr +\
+                                                  rtx_entry['segment'].length):
+                    self._rtx_queue.remove(self._rtx_queue[index])
+                index += 1
+            self._snd_una = next_seg.ack_nr
             #debug
             self.info()
             next_seg.info()
