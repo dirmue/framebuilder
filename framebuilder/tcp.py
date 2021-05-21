@@ -1,6 +1,5 @@
 '''Module for TCP functions'''
 
-import queue as q
 from time import time_ns
 from framebuilder import tools, errors as err, layer4, ipv4
 
@@ -898,8 +897,12 @@ class TCPHandler(ipv4.IPv4Handler):
         self._remote_ip = remote_ip
 
         # retransmission Queue
-        # (time_ns, segment)
-        self._rtx_queue = q.Queue(0)
+        # [{
+        #   'segment': <TCPSegment>,
+        #   'time': <int>,
+        #   'delay': <int>
+        # }, ...]
+        self._rtx_queue = []
 
         # initial retransmission timer 1s
         self._rtx_timer = 10**9
@@ -1079,6 +1082,15 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.CLOSED:
             raise err.NoTCPConnectionException('receive() while status closed')
         segment = self.receive_segment(pass_on_error)
+        if segment is not None:
+            index = 0
+            for rtx_entry in self._rtx_queue:
+                if segment.ack_nr >= tools.mod32(rtx_entry['segment'].seq_nr + \
+                                                 rtx_entry['segment'].length):
+                    self._rtx_queue.remove(self._rtx_queue[index])
+                index += 1
+            self._snd_una = segment.ack_nr
+        self.__process_rtx_queue()
 
 
     def send(self, data):
@@ -1335,20 +1347,14 @@ class TCPHandler(ipv4.IPv4Handler):
 
     def __process_rtx_queue(self, dont_frag=True):
         '''
-        resend unacknowledged segments
+        resend unacknowledged segments if rtx_timer is exceeded
         '''
-        not_exceeded = []
-        while True:
-            try:
-                next_elem = self._rtx_queue.get_nowait()
-                if next_elem[0] + self._rtx_timer < time_ns():
-                    next_elem[0] = time_ns()
-                    super().send(next_elem[1], dont_frag)
-                not_exceeded.append(next_elem)
-            except q.Empty:
-                break
-        for next_elem in not_exceeded:
-            self._rtx_queue.put(next_elem)
+        for rtx_entry in self._rtx_queue:
+            if rtx_entry['time'] + (self._rtx_timer << rtx_entry['delay']) \
+                    < time_ns():
+                rtx_entry['time'] = time_ns()
+                rtx_entry['delay'] += 1
+                super().send(rtx_entry['segment'], dont_frag)
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1362,7 +1368,9 @@ class TCPHandler(ipv4.IPv4Handler):
         if ack_len == 0 and (segment.syn == 1 or segment.fin == 1):
             ack_len = 1
         if ack_len > 0:
-            self._rtx_queue.put((time_ns(), segment))
+            self._rtx_queue.append({'segment': segment,
+                                    'time:': time.time_ns(),
+                                    'delay': 0)
             self._snd_una = tools.mod32(self._snd_una + ack_len)
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
@@ -1375,7 +1383,6 @@ class TCPHandler(ipv4.IPv4Handler):
         :param pass_on_error: <bool> return None if non-blocking socket does
                                      not receive anything
         '''
-        self.__process_rtx_queue()
 
         if self.state == self.CLOSED:
             # this should never happen
