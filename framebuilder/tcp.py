@@ -1414,6 +1414,10 @@ class TCPHandler(ipv4.IPv4Handler):
         segment = TCPSegment.from_packet(packet)
         if self._rcv_next is not None:
             if not self._is_in_rcv_seq_space(segment):
+                ### debug
+                print('RCV_NXT:', self._rcv_next)
+                segment.info()
+                ### end debug
                 # dismiss segment right away if it is outside receive sequence
                 # space
                 return None
@@ -1427,23 +1431,24 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.remote_ip = packet.src_addr
             
             self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
-            #if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
-            #    if next_seg.length == 0:
-            #        self._rcv_next = tools.mod32(self._rcv_next + 1)
+            if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
+                if next_seg.length == 0:
+                    self._rcv_next = tools.mod32(self._rcv_next + 1)
             
             # remove acknowledged segments from rtx_queue
             index = 0
             for rtx_entry in self._rtx_queue:
-                if next_seg.ack_nr >= tools.mod32(rtx_entry['segment'].seq_nr +\
-                                                  rtx_entry['segment'].length):
+                if tools.tcp_sn_gt(next_seg.ack_nr, 
+                        tools.mod32(rtx_entry['segment'].seq_nr + \
+                                rtx_entry['segment'].length)):
                     self._rtx_queue.remove(self._rtx_queue[index])
                 index += 1
             self._snd_una = next_seg.ack_nr
             
-            #debug
+            ### debug
             self.info()
             next_seg.info()
-            
+            ### end debug
             ack = TCPSegment()
             self.__send_ack(ack)
             return next_seg
