@@ -1103,6 +1103,7 @@ class TCPHandler(ipv4.IPv4Handler):
         segment = self.receive_segment(pass_on_error)
         
         # TODO: think about correct buffer handling
+        print(self._recv_buffer)
         if len(self._recv_buffer) > 0:
             data = self._recv_buffer
             self._recv_buffer.clear()
