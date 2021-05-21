@@ -1455,6 +1455,8 @@ class TCPHandler(ipv4.IPv4Handler):
             ### debug
             self.info()
             next_seg.info()
+            print('--- HEX DUMP ---')
+            tools.print_pkg_data_hex(next_seg.get_bytes())
             ### end debug
             ack = TCPSegment()
             self.__send_ack(ack)
