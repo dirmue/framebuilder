@@ -1,5 +1,6 @@
 '''Module for TCP functions'''
 
+import copy
 from time import time_ns
 from framebuilder import tools, errors as err, layer4, ipv4
 
@@ -1104,8 +1105,7 @@ class TCPHandler(ipv4.IPv4Handler):
         
         # TODO: think about correct buffer handling
         if len(self._recv_buffer) > 0:
-            data = self._recv_buffer
-            print(data.decode('UTF-8'))
+            data = copy.copy(self._recv_buffer)
             self._recv_buffer.clear()
             return data
         return b''
