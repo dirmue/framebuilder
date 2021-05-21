@@ -1412,7 +1412,6 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         segment = TCPSegment.from_packet(packet)
-        print(segment.payload)
         if self._rcv_next is not None:
             if not self._is_in_rcv_seq_space(segment):
                 # dismiss segment right away if it is outside receive sequence
@@ -1423,6 +1422,7 @@ class TCPHandler(ipv4.IPv4Handler):
         
         if next_seg is not None:
             self._recv_buffer.extend(next_seg.payload)
+            print(next_seg.payload)
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
             
