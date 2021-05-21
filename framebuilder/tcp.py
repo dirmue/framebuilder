@@ -916,11 +916,6 @@ class TCPHandler(ipv4.IPv4Handler):
         # sequence number of next segment to be sent
         self._snd_nxt = self._iss
 
-        # send window size
-        # snd_una + snd_wnd = upper boundary of allowed sequence number space
-        # let's start with 1 segment
-        self._snd_wnd = self._mss
-
         # send urgent pointer
         self._snd_up = None
 
@@ -960,7 +955,13 @@ class TCPHandler(ipv4.IPv4Handler):
                 }
 
         super().__init__(interface, remote_ip, block=block, t_out=t_out)
+
         self._mss = self.mtu - 40
+
+        # send window size
+        # snd_una + snd_wnd = upper boundary of allowed sequence number space
+        # let's start with 1 segment
+        self._snd_wnd = self._mss
 
 
     def __del__(self):
