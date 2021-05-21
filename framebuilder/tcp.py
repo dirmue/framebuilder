@@ -896,8 +896,6 @@ class TCPHandler(ipv4.IPv4Handler):
         self._local_port = local_port
         self._remote_port = None
         self._remote_ip = remote_ip
-        #self._mss = self.mtu - 40
-        self._mss = 1460
 
         # retransmission Queue
         # (time_ns, segment)
@@ -962,6 +960,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 }
 
         super().__init__(interface, remote_ip, block=block, t_out=t_out)
+        self._mss = self.mtu - 40
 
 
     def __del__(self):
@@ -1416,7 +1415,7 @@ class TCPHandler(ipv4.IPv4Handler):
             
             ack = TCPSegment()
             self.__send_ack(ack)
-            return next_seg.length
+            return next_seg
         return None
 
 

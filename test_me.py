@@ -2,7 +2,7 @@
 
 from framebuilder import ipv4, tcp, udp, tools
 
-iface = '10.14.32.204'
+iface = 'wlp3s0'
 '''
 target_ip = '78.47.151.229'
 remote_port = 33333
