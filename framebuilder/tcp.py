@@ -1370,7 +1370,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if ack_len > 0:
             self._rtx_queue.append({'segment': segment,
                                     'time:': time.time_ns(),
-                                    'delay': 0)
+                                    'delay': 0})
             self._snd_una = tools.mod32(self._snd_una + ack_len)
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
