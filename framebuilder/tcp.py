@@ -1383,7 +1383,11 @@ class TCPHandler(ipv4.IPv4Handler):
             self._rtx_queue.append({'segment': segment,
                                     'time': time_ns(),
                                     'delay': 0})
-            self._snd_una = tools.mod32(self._snd_una + ack_len)
+            self._snd_nxt = tools.mod32(self._snd_nxt + ack_len)
+            # Still not sure if this is ok --> Check RFC!
+            if segment.syn == 1 or segment.fin == 1:
+                self._snd_nxt += 1
+            self._snd_una = self._snd_nxt
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
