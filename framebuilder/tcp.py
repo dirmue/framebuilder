@@ -222,7 +222,8 @@ class TCPSegment(layer4.Base):
         '''
         Create TCP segment from payload of layer 3 packet
         '''
-        packet.payload = packet.payload[0:packet.total_length - packet.ihl * 4)]
+        # strip ethernet padding
+        packet.payload = packet.payload[0:packet.total_length - packet.ihl * 4]
         segment = cls.from_bytes(packet.payload)
         segment.create_pseudo_header(packet)
         return segment
