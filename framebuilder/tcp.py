@@ -1133,10 +1133,11 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         pass
     
-    def __send_ack(self, answer: TCPSegment):
+    def __send_ack(self):
         '''
         Send acknowledgement
         '''
+        answer = TCPSegment()
         answer.ack = 1
         if len(self._send_buffer) > self._mss:
             answer.payload = self._send_buffer[0:self._mss]
@@ -1428,8 +1429,8 @@ class TCPHandler(ipv4.IPv4Handler):
         if self._rcv_next is not None:
             if not self._is_in_rcv_seq_space(segment):
                 ### debug
-                print('RCV_NXT:', self._rcv_next)
-                segment.info()
+                #print('RCV_NXT:', self._rcv_next)
+                #segment.info()
                 ### end debug
                 # dismiss segment right away if it is outside receive sequence
                 # space
@@ -1443,6 +1444,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
             
+            old_rcv_next = self._rcv_next
             self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
             if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
                 if next_seg.length == 0:
@@ -1459,14 +1461,16 @@ class TCPHandler(ipv4.IPv4Handler):
             self._snd_una = next_seg.ack_nr
             
             ### debug
-            self.info()
-            packet.info()
-            next_seg.info()
-            print('--- HEX DUMP ---')
-            tools.print_pkg_data_hex(next_seg.get_bytes())
+            #self.info()
+            #packet.info()
+            #next_seg.info()
+            #print('--- HEX DUMP ---')
+            #tools.print_pkg_data_hex(next_seg.get_bytes())
             ### end debug
-            ack = TCPSegment()
-            self.__send_ack(ack)
+
+            # only acknowledge if rcv_nxt is increased
+            if tools.tcp_sn_gt(self._rcv_next, old_rcv_next):
+                self.__send_ack()
             return next_seg
         return None
 
