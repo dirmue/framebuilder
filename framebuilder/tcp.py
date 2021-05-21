@@ -1412,6 +1412,7 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         segment = TCPSegment.from_packet(packet)
+        print(segment.payload)
         if self._rcv_next is not None:
             if not self._is_in_rcv_seq_space(segment):
                 # dismiss segment right away if it is outside receive sequence
