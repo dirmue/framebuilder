@@ -1412,6 +1412,13 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         segment = TCPSegment.from_packet(packet)
+        if segment.dst_port != self.local_port:
+            return None
+
+        if self.remote_port is not None:
+            if segment.src_port != self.remote_port:
+                return None
+
         if self._rcv_next is not None:
             if not self._is_in_rcv_seq_space(segment):
                 ### debug
