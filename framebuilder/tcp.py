@@ -669,6 +669,17 @@ class TCPSegment(layer4.Base):
             raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
+    def get_mss(self):
+        '''
+        Search for TCP MSS otion and return MSS or None
+        '''
+        for opt in self.options:
+            odict = opt.get_dict()
+            if odict['kind'] == 2:
+                return tools.get_value_at(odict['option_data'], 2)
+        return None
+
+
     def add_tcp_wscale_option(self, shift_ct=0):
         '''
         Add a TCP window scaling option according to RFC 7323
@@ -706,6 +717,17 @@ class TCPSegment(layer4.Base):
             raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
 
 
+    def get_wscale(self):
+        '''
+        Search for TCP window scaling otion and return shift count or None
+        '''
+        for opt in self.options:
+            odict = opt.get_dict()
+            if odict['kind'] == 3:
+                return tools.get_value_at(odict['option_data'], 1)
+        return None
+
+
     def add_tcp_ts_option(self, ts_val=0, ts_ecr=0):
         '''
         Add a TCP timestamp option
@@ -715,7 +737,6 @@ class TCPSegment(layer4.Base):
         '''
         o_kind = 8
         o_length = 10
-
 
         opt = TCPOption({'kind': o_kind,
                          'length': o_length,
@@ -728,6 +749,19 @@ class TCPSegment(layer4.Base):
         self.data_offset += 3
         if self._data_offset > 15:
             raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+
+
+    def get_time_stamp(self):
+        '''
+        Search for TCP time stamp otion and return time stamp value and echo
+        request as tuple (tsval, tsecr) or None
+        '''
+        for opt in self.options:
+            odict = opt.get_dict()
+            if odict['kind'] == 8:
+                return (tools.get_value_at(odict['option_data'], 4),
+                        tools.get_value_at(odict['option_data', 4, 4)
+        return None
 
 
     def add_tcp_sack_perm_option(self):
@@ -745,6 +779,18 @@ class TCPSegment(layer4.Base):
         self.data_offset += 1
         if self.data_offset > 15:
             raise err.MaxTCPHeaderSizeExceeded('Data offset greater than 16')
+
+
+    def sack_permitted(self):
+        '''
+        Search for TCP SACK permitted option and return True if found and False
+        if not
+        '''
+        for opt in self.options:
+            odict = opt.get_dict()
+            if odict['kind'] == 4:
+                return True
+        return False
 
 
     def add_tcp_sack_option(self, sack_blocks):
@@ -1155,15 +1201,12 @@ class TCPHandler(ipv4.IPv4Handler):
             answer.fin = 1
         if self.state == self.SYN_RECEIVED:
             answer.syn = 1
+            answer.add_tcp_mss_option(self._mss)
         answer.src_port = self.local_port
         answer.dst_port = self.remote_port
         answer.window = self._rcv_wnd
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
-        ### DEBUG ###
-        if self.state == self.SYN_RECEIVED:
-            answer.info()
-        ### END DEBUG ###
         return self.send_segment(answer)
 
 
@@ -1181,6 +1224,12 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if segment.dst_port == self.local_port:
             if all(conditions):
+                seg_mss = segment.get_mss
+                if seg_mss is not None:
+                    if seg_mss < self._mss:
+                        self._mss = seg_mss
+                else:
+                    self._mss = 536
                 self._irs = segment.seq_nr
                 self._rcv_next = self._irs
                 self.remote_port = segment.src_port
