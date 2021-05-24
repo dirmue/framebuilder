@@ -1199,6 +1199,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self._send_buffer = self._send_buffer[len(self._send_buffer):]
         if self.state == self.CLOSE_WAIT:
             answer.fin = 1
+            self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
             answer.syn = 1
             answer.add_tcp_mss_option(self._mss)
