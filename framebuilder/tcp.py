@@ -1224,7 +1224,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if segment.dst_port == self.local_port:
             if all(conditions):
-                seg_mss = segment.get_mss
+                seg_mss = segment.get_mss()
                 if seg_mss is not None:
                     if seg_mss < self._mss:
                         self._mss = seg_mss
