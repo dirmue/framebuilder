@@ -1391,9 +1391,6 @@ class TCPHandler(ipv4.IPv4Handler):
                                     'time': time_ns(),
                                     'delay': 0})
             self._snd_nxt = tools.mod32(self._snd_nxt + ack_len)
-            # Still not sure if this is ok --> Check RFC!
-            if segment.syn == 1 or segment.fin == 1:
-                self._snd_nxt += 1
             self._snd_una = self._snd_nxt
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
@@ -1409,7 +1406,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self.__process_rtx_queue()
 
         if self.state == self.CLOSED:
-            # this should never happen
+            # do not process any segments if connection is closed
             return None
 
         if self.local_port is None:
