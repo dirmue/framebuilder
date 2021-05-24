@@ -1223,19 +1223,18 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.syn == 1
                 )
 
-        if segment.dst_port == self.local_port:
-            if all(conditions):
-                seg_mss = segment.get_mss()
-                if seg_mss is not None:
-                    if seg_mss < self._mss:
-                        self._mss = seg_mss
-                else:
-                    self._mss = 536
-                self._irs = segment.seq_nr
-                self._rcv_next = self._irs
-                self.remote_port = segment.src_port
-                self.state = self.SYN_RECEIVED
-                return segment
+        if all(conditions):
+            seg_mss = segment.get_mss()
+            if seg_mss is not None:
+                if seg_mss < self._mss:
+                    self._mss = seg_mss
+            else:
+                self._mss = 536
+            self._irs = segment.seq_nr
+            self._rcv_next = self._irs
+            self.remote_port = segment.src_port
+            self.state = self.SYN_RECEIVED
+            return segment
         return None
 
 
@@ -1251,14 +1250,13 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.syn == 1
                 )
 
-        if segment.dst_port == self.local_port:
-            if all(conditions):
-                self._irs = segment.seq_nr
-                self.remote_port = segment.src_port
-                self.state = self.ESTABLISHED
-                return segment
-            elif segment.rst == 1:
-                self.state = self.CLOSED
+        if all(conditions):
+            self._irs = segment.seq_nr
+            self.remote_port = segment.src_port
+            self.state = self.ESTABLISHED
+            return segment
+        elif segment.rst == 1:
+            self.state = self.CLOSED
         return None
 
 
@@ -1274,16 +1272,15 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.syn == 0
                 )
 
-        if segment.dst_port == self._local_port:
-            if all(conditions):
-                self.state = self.ESTABLISHED
-                return segment
-            elif segment.rst == 1:
-                self.state = self.LISTEN
-                return None
-            elif segment.fin == 1:
-                self.state = self.FIN_WAIT_1
-                return segment
+        if all(conditions):
+            self.state = self.ESTABLISHED
+            return segment
+        elif segment.rst == 1:
+            self.state = self.LISTEN
+            return None
+        elif segment.fin == 1:
+            self.state = self.FIN_WAIT_1
+            return segment
         return None
 
 
@@ -1298,11 +1295,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.syn == 0
                 )
         
-        if segment.dst_port == self._local_port:
-            if all(conditions):
-                if segment.fin == 1:
-                    self.state = self.CLOSE_WAIT
-                return segment
+        if all(conditions):
+            if segment.fin == 1:
+                self.state = self.CLOSE_WAIT
+            return segment
         return None
 
 
@@ -1317,14 +1313,13 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.syn == 0
                 )
 
-        if segment.dst_port == self.local_port:
-            if all(conditions):
-                self.state = self.FIN_WAIT_2
-                if segment.fin == 1:
-                    self.state = self.CLOSING
-                return segment
-            elif segment.rst == 1:
-                self.state = self.CLOSED
+        if all(conditions):
+            self.state = self.FIN_WAIT_2
+            if segment.fin == 1:
+                self.state = self.CLOSING
+            return segment
+        elif segment.rst == 1:
+            self.state = self.CLOSED
         return None
 
 
@@ -1340,12 +1335,11 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.fin == 1
                 )
 
-        if segment.dst_port == self.local_port:
-            if all(conditions):
-                self.state = self.TIME_WAIT
-                return segment
-            elif segment.rst == 1:
-                self.state = self.CLOSED
+        if all(conditions):
+            self.state = self.TIME_WAIT
+            return segment
+        elif segment.rst == 1:
+            self.state = self.CLOSED
         return None
 
 
@@ -1361,11 +1355,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.syn == 0
                 )
 
-        if segment.dst_port == self._local_port:
-            if all(conditions):
-                return segment
-            elif segment.rst == 1:
-                self.state = self.CLOSED
+        if all(conditions):
+            return segment
+        elif segment.rst == 1:
+            self.state = self.CLOSED
         return None
 
 
@@ -1374,11 +1367,7 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in CLOSING state
         :param packet: Incoming packet
         '''
-        conditions = (
-                segment.ack == 1
-                )
-
-        if segment.dst_port == self._local_port:
+        if segment.ack == 1:
             if all(conditions):
                 self.state = self.CLOSED
                 return segment
@@ -1390,11 +1379,7 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in TIME_WAIT state
         :param packet: Incoming packet
         '''
-        conditions = (
-                segment.ack == 1
-                )
-
-        if segment.dst_port == self._local_port:
+        if segment.ack == 1:
             return segment
         return None
 
@@ -1404,17 +1389,12 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in LAST_ACK state
         :param packet: Incoming packet
         '''
-        conditions = (
-                segment.ack == 1
-                )
-
-        if segment.dst_port == self._local_port:
-            if all(conditions):
-                self.state = self.CLOSED
-                if segment.rst != 1:
-                    return segment
-                tools.unhide_from_krnl_in(self.interface, self.local_ip, 
-                        self.local_port)
+        if segment.ack == 1:
+            self.state = self.CLOSED
+            if segment.rst != 1:
+                return segment
+            tools.unhide_from_krnl_in(self.interface, self.local_ip, 
+                    self.local_port)
         return None
 
 
