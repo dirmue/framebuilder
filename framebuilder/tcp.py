@@ -760,7 +760,7 @@ class TCPSegment(layer4.Base):
             odict = opt.get_dict()
             if odict['kind'] == 8:
                 return (tools.get_value_at(odict['option_data'], 4),
-                        tools.get_value_at(odict['option_data', 4, 4)
+                        tools.get_value_at(odict['option_data', 4, 4))
         return None
 
 
