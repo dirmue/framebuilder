@@ -978,7 +978,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._snd_wl2 = None
 
         # sequence number of next segment to be received
-        self._rcv_next = None
+        self._rcv_next = 0
 
         # receive window
         self._rcv_wnd = 65535
@@ -1131,6 +1131,8 @@ class TCPHandler(ipv4.IPv4Handler):
         segment = TCPSegment()
         segment.src_port = self.local_port
         segment.dst_port = self.remote_port
+        segment.seq_nr = self._snd_nxt
+        segment.ack_nr = self._rcv_next
         segment.syn = 1
         self.send_segment(segment)
         self.state = self.SYN_SENT
@@ -1172,7 +1174,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         self._send_buffer.extend(data)
         # TODO: Handle window size; wait during retransmission
-        while len(self._send_buffer > 0):
+        while len(self._send_buffer) > 0:
             self.__process_rtx_queue(dont_frag)
             send_len = self._mss
             if len(self._send_buffer < self._mss):
@@ -1291,6 +1293,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if all(conditions):
             self._irs = segment.seq_nr
+            self._rcv_next = self._irs
             self.remote_port = segment.src_port
             self.state = self.ESTABLISHED
             return segment
@@ -1503,7 +1506,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        if self._rcv_next is not None:
+        if self._rcv_next is not None and self.state != self.SYN_SENT:
             if not self._is_in_rcv_seq_space(segment):
                 ### debug
                 #print('RCV_NXT:', self._rcv_next)
