@@ -1482,9 +1482,9 @@ class TCPHandler(ipv4.IPv4Handler):
             
             old_rcv_next = self._rcv_next
             self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
-            if self.state == self.SYN_RECEIVED or self.state == self.CLOSE_WAIT:
-                if next_seg.length == 0:
-                    self._rcv_next = tools.mod32(self._rcv_next + 1)
+            # SYN and FIN flag are treated as one virtual byte
+            if next_seg.syn == 1 or next_seg.fin == 1:
+                self._rcv_next = tools.mod32(self._rcv_next + 1)
             
             # remove acknowledged segments from rtx_queue
             index = 0
