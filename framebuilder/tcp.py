@@ -1157,7 +1157,7 @@ class TCPHandler(ipv4.IPv4Handler):
         return b''
 
 
-    def send(self, data):
+    def send(self, data, dont_frag=True):
         '''
         Send data over a TCP connection
         '''
@@ -1169,21 +1169,60 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if self.remote_ip is None:
             raise err.InvalidIPv4AddrException('None')
-        pass
+
+        self._send_buffer.extend(data)
+        # TODO: Handle window size; wait during retransmission
+        while len(self._send_buffer > 0):
+            self.__process_rtx_queue(dont_frag)
+            send_len = self._mss
+            if len(self._send_buffer < self._mss):
+                send_len = len(self._send_buffer)
+            seg_chunk = self._send_buffer[0:send_len]
+            self._send_buffer = self._send_buffer[send_len:]
+            #self._snd_wnd -= send_len
+            segment = TCPSegment()
+            segment.src_port = self.local_port
+            segment.dst_port = self.remote_port
+            segment.ack = 1
+            segment.seq_nr = self._snd_nxt
+            segment.ack_nr = self._rcv_next
+            segment.window = self._rcv_wnd
+            self.send_segment(segment)
+            self._snd_nxt += self._mss
 
 
     def close(self):
         '''
         Close the connection
         '''
-        pass
+        if self.state != self.ESTABLISHED:
+            raise err.NoTCPConnectionException('invalid state: ' + \
+                    self.get_state_str())
+        segment = TCPSegment()
+        segment.src_port = self.local_port
+        segment.dst_port = self.remote_port
+        segment.fin = 1
+        segment.ack = 1
+        segment.seq_nr = self._snd_nxt
+        segment.ack_nr = self._rcv_next
+        segment.window = self._rcv_wnd
+        self.send_segment(segment)
+        self.state = self.FIN_WAIT_1
 
 
     def abort(self):
         '''
         Reset the connection
         '''
-        pass
+        segment = TCPSegment()
+        segment.src_port = self.local_port
+        segment.dst_port = self.remote_port
+        segment.rst = 1
+        segment.seq_nr = self._snd_nxt
+        segment.window = self._rcv_wnd
+        self.send_segment(segment)
+        self.state = self.CLOSED
+
     
     def __send_ack(self):
         '''
@@ -1304,7 +1343,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
     def __recv_fin_wait1(self, segment: TCPSegment):
         '''
-        Process incoming segment in FIN_WAIT1 state
+        Process incoming segment in FIN_WAIT_1 state
         :param packet: Incoming packet
         '''
         conditions = (
@@ -1418,6 +1457,7 @@ class TCPHandler(ipv4.IPv4Handler):
         :param segment: <TCPSegment> segment to send
         '''
         ack_len = segment.length
+        # SYN and FIN are treated as 1 virtual byte
         if segment.syn == 1 or segment.fin == 1:
             ack_len += 1
         if ack_len > 0:
