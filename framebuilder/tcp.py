@@ -1160,6 +1160,10 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.window = self._rcv_wnd
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
+        ### DEBUG ###
+        if self.state == self.SYN_RECEIVED:
+            answer.info()
+        ### END DEBUG ###
         return self.send_segment(answer)
 
 
