@@ -1418,8 +1418,8 @@ class TCPHandler(ipv4.IPv4Handler):
         :param segment: <TCPSegment> segment to send
         '''
         ack_len = segment.length
-        if ack_len == 0 and (segment.syn == 1 or segment.fin == 1):
-            ack_len = 1
+        if segment.syn == 1 or segment.fin == 1:
+            ack_len += 1
         if ack_len > 0:
             self._rtx_queue.append({'segment': segment,
                                     'time': time_ns(),
