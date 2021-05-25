@@ -1128,19 +1128,21 @@ class TCPHandler(ipv4.IPv4Handler):
             self.local_port = tools.get_local_tcp_port()
         self.remote_ip = remote_ip
         self.remote_port = remote_port
+        tools.hide_from_kernel(self.interface, self.remote_ip, self.remote_port)
+        
         segment = TCPSegment()
         segment.src_port = self.local_port
         segment.dst_port = self.remote_port
         segment.seq_nr = self._snd_nxt
         segment.ack_nr = self._rcv_next
         segment.syn = 1
+        segment.add_tcp_mss_option(self._mss)
         self.send_segment(segment)
         self.state = self.SYN_SENT
         while True:
             self.receive_segment()
             if self.state == self.ESTABLISHED:
                 break
-        tools.hide_from_kernel(self.interface, self.remote_ip, self.remote_port)
 
 
     def receive(self, buf_sz, pass_on_error=True):
@@ -1163,6 +1165,10 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Send data over a TCP connection
         '''
+        ### DEBUG ###
+        last_state = self.state
+        print('State:', self.get_state_str())
+        ### END DEBUG ###
         if self.state == self.CLOSED:
             raise err.NoTCPConnectionException('send() while status closed')
 
@@ -1174,23 +1180,28 @@ class TCPHandler(ipv4.IPv4Handler):
 
         self._send_buffer.extend(data)
         # TODO: Handle window size; wait during retransmission
-        while len(self._send_buffer) > 0:
-            self.__process_rtx_queue(dont_frag)
+        while len(self._send_buffer) > 0 or len(self._rtx_queue) > 0:
             send_len = self._mss
-            if len(self._send_buffer < self._mss):
+            if len(self._send_buffer) < self._mss:
                 send_len = len(self._send_buffer)
-            seg_chunk = self._send_buffer[0:send_len]
-            self._send_buffer = self._send_buffer[send_len:]
-            #self._snd_wnd -= send_len
-            segment = TCPSegment()
-            segment.src_port = self.local_port
-            segment.dst_port = self.remote_port
-            segment.ack = 1
-            segment.seq_nr = self._snd_nxt
-            segment.ack_nr = self._rcv_next
-            segment.window = self._rcv_wnd
-            self.send_segment(segment)
-            self._snd_nxt += self._mss
+            if send_len > 0:
+                seg_chunk = self._send_buffer[0:send_len]
+                self._send_buffer = self._send_buffer[send_len:]
+                segment = TCPSegment()
+                segment.src_port = self.local_port
+                segment.dst_port = self.remote_port
+                segment.ack = 1
+                segment.seq_nr = self._snd_nxt
+                segment.ack_nr = self._rcv_next
+                segment.window = self._rcv_wnd
+                segment.payload = seg_chunk
+                self.send_segment(segment)
+            ### DEBUG ###
+            if self.state != last_state:
+                print('State:', self.get_state_str())
+                last_state = self.state
+            ### END DEBUG ###
+            self.receive_segment()
 
 
     def close(self):
@@ -1210,6 +1221,9 @@ class TCPHandler(ipv4.IPv4Handler):
         segment.window = self._rcv_wnd
         self.send_segment(segment)
         self.state = self.FIN_WAIT_1
+        while self.state != self.CLOSING:
+            self.receive_segment()
+        self.state = self.CLOSED
 
 
     def abort(self):
@@ -1410,9 +1424,8 @@ class TCPHandler(ipv4.IPv4Handler):
         :param packet: Incoming packet
         '''
         if segment.ack == 1:
-            if all(conditions):
-                self.state = self.CLOSED
-                return segment
+            self.state = self.TIME_WAIT
+            return segment
         return None
 
 
@@ -1422,6 +1435,7 @@ class TCPHandler(ipv4.IPv4Handler):
         :param packet: Incoming packet
         '''
         if segment.ack == 1:
+            self.state = self.CLOSED
             return segment
         return None
 
@@ -1447,6 +1461,9 @@ class TCPHandler(ipv4.IPv4Handler):
         for rtx_entry in self._rtx_queue:
             if rtx_entry['time'] + (self._rtx_timer << rtx_entry['delay']) \
                     < time_ns():
+                if rtx_entry['delay'] > 8:
+                    self.abort()
+                    break
                 rtx_entry['time'] = time_ns()
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
@@ -1525,6 +1542,7 @@ class TCPHandler(ipv4.IPv4Handler):
             
             old_rcv_next = self._rcv_next
             self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
+            
             # SYN and FIN flag are treated as one virtual byte
             if next_seg.syn == 1 or next_seg.fin == 1:
                 self._rcv_next = tools.mod32(self._rcv_next + 1)
@@ -1534,15 +1552,16 @@ class TCPHandler(ipv4.IPv4Handler):
             for rtx_entry in self._rtx_queue:
                 if tools.tcp_sn_gt(next_seg.ack_nr, 
                         tools.mod32(rtx_entry['segment'].seq_nr + \
-                                rtx_entry['segment'].length)):
+                                rtx_entry['segment'].length - 1)):
                     self._rtx_queue.remove(self._rtx_queue[index])
-                index += 1
+                else:
+                    index += 1
             self._snd_una = next_seg.ack_nr
             
             ### debug
-            #self.info()
+            self.info()
             #packet.info()
-            #next_seg.info()
+            next_seg.info()
             #print('--- HEX DUMP ---')
             #tools.print_pkg_data_hex(next_seg.get_bytes())
             ### end debug
