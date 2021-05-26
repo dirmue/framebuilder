@@ -1015,6 +1015,18 @@ class TCPHandler(ipv4.IPv4Handler):
         # let's start with 1 segment
         self._snd_wnd = self._mss
 
+        # slow start threshold
+        self._ssthresh = 10
+
+        # round trip time
+        self._rtt = None
+        
+        # smoothed round trip time
+        self._srtt = None
+
+        # rtt variance
+        self._rttvar = None
+
 
     def __del__(self):
         '''
@@ -1166,8 +1178,8 @@ class TCPHandler(ipv4.IPv4Handler):
         Send data over a TCP connection
         '''
         ### DEBUG ###
-        last_state = self.state
-        print('State:', self.get_state_str())
+        #last_state = ''
+        last_rtx_timer = 0
         ### END DEBUG ###
         if self.state == self.CLOSED:
             raise err.NoTCPConnectionException('send() while status closed')
@@ -1197,9 +1209,12 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.payload = seg_chunk
                 self.send_segment(segment)
             ### DEBUG ###
-            if self.state != last_state:
-                print('State:', self.get_state_str())
-                last_state = self.state
+            #if self.state != last_state:
+            #    print('State:', self.get_state_str())
+            #    last_state = self.state
+            if self._rtx_timer != last_rtx_timer:
+                print('new rtx timer:', self._rtx_timer)
+                last_rtx_timer = self._rtx_timer
             ### END DEBUG ###
             self.receive_segment()
 
@@ -1553,20 +1568,23 @@ class TCPHandler(ipv4.IPv4Handler):
                 if tools.tcp_sn_gt(next_seg.ack_nr, 
                         tools.mod32(rtx_entry['segment'].seq_nr + \
                                 rtx_entry['segment'].length - 1)):
+                    if rtx_entry['delay'] == 0:
+                        self.__calc_rtx_timer(time_ns() - rtx_entry['time'])
                     self._rtx_queue.remove(self._rtx_queue[index])
                 else:
                     index += 1
             self._snd_una = next_seg.ack_nr
             
             ### debug
-            self.info()
+            #self.info()
             #packet.info()
-            next_seg.info()
+            #next_seg.info()
             #print('--- HEX DUMP ---')
             #tools.print_pkg_data_hex(next_seg.get_bytes())
             ### end debug
 
             # only acknowledge if rcv_nxt is increased
+            # WRONG! (tcp keep-alive, window updates, ...)
             if tools.tcp_sn_gt(self._rcv_next, old_rcv_next):
                 self.__send_ack()
             return next_seg
@@ -1576,6 +1594,7 @@ class TCPHandler(ipv4.IPv4Handler):
     def _is_in_rcv_seq_space(self, segment: TCPSegment):
         '''
         Check if incoming TCP segment lies within receive sequence space
+
         :param segment: <TCPSegment> incoming TCP segment
         '''
         seg_length = segment.length
@@ -1600,3 +1619,23 @@ class TCPHandler(ipv4.IPv4Handler):
                                         segment.seq_nr + seg_length - 1)) and \
                         tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
                                         segment.seq_nr + seg_length - 1)
+
+
+    def __calc_rtx_timer(self, newrtt, alpha=0.125, beta=0.25):
+        '''
+        Calculates the retransmission timer
+        
+        :param newrtt: new round trip time
+        :param alpha: smoothing factor for _srtt
+        :param beta: smoothing factor for _rttvar
+        '''
+        if self._rtt is None:
+            self._rtt = newrtt
+            self._srtt = self._rtt
+            self._rttvar = self._rtt >> 1 
+        else:
+            self._rtt = newrtt
+            self._rttvar = (1 - beta) * self._rttvar + \
+                    beta * abs(self._srtt - self._rtt)
+            self._srtt = (1 - alpha) * self._srtt + alpha * self._rtt
+        self._rtx_timer = int(self._srtt + (self._rttvar * 4))
