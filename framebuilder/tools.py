@@ -1,7 +1,6 @@
 '''Module containing helper functions and utilities used by custompk'''
 
 import socket
-import signal
 import re
 import struct
 import time
@@ -280,17 +279,17 @@ def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
     :param proto: <str> protocol (tcp, udp, icmp or all)
     :param delay: <float> delay before removing the rule in seconds
     '''
-    # ignore Ctrl-C during delay
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
     if proto not in ['tcp', 'udp', 'icmp']:
         proto = 'all'
     try:
         time.sleep(delay)
         if proto != 'icmp':
             cmd = 'iptables -D INPUT -i {} -p {} -s {} --sport {} -j DROP'
+            cmd += ' 2>/dev/null'
             os.system(cmd.format(in_iface, proto, remote_ip, remote_port))
         else:
             cmd = 'iptables -D INPUT -i {} -p {} -s {} -j DROP'
+            cmd += ' 2>/dev/null'
             os.system(cmd.format(in_iface, proto, remote_ip))
     except Exception as ex:
         print(ex)
@@ -332,17 +331,17 @@ def unhide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp', delay=1):
     :param proto: <str> protocol (tcp, udp, icmp or all)
     :param delay: <float> delay before removing the rule in seconds
     '''
-    # ignore Ctrl-C during delay
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
     if proto not in ['tcp', 'udp', 'icmp']:
         proto = 'all'
     try:
         time.sleep(delay)
         if proto != 'icmp':
             cmd = 'iptables -D INPUT -i {} -p {} -d {} --dport {} -j DROP'
+            cmd += ' 2>/dev/null'
             os.system(cmd.format(in_iface, proto, local_ip, local_port))
         else:
             cmd = 'iptables -D INPUT -i {} -p {} -d {} -j DROP'
+            cmd += ' 2>/dev/null'
             os.system(cmd.format(in_iface, proto, local_ip))
     except Exception as ex:
         print(ex)

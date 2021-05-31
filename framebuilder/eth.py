@@ -596,6 +596,9 @@ class EthernetHandler:
         if local_mac is not None:
             if not is_valid_mac_address(local_mac):
                 raise InvalidMACAddrException
+        else:
+            local_mac = get_mac_addr(self.interface)
+
         self._local_mac = local_mac
 
         if remote_mac is not None:
@@ -612,23 +615,15 @@ class EthernetHandler:
         '''
         Initialize frame with empty payload
         '''
-        src_addr = self.local_mac
-        dst_addr = self.remote_mac
-        ether_type = self._ether_type
+        if self._remote_mac is None:
+            self._remote_mac = get_mac_for_dst_ip(packet.dst_addr)
 
-        if src_addr is None:
-            src_addr = get_mac_addr(self.interface)
+        if self._ether_type is None:
+            self._ether_type = 0x0800
 
-        if dst_addr is None:
-            # TODO: broadcast & multicast does not work yet
-            dst_addr = get_mac_for_dst_ip(packet.dst_addr)
-
-        if ether_type is None:
-            ether_type = 0x0800
-
-        frame_data = {'src_addr': src_addr,
-                      'dst_addr': dst_addr,
-                      'ether_type': ether_type}
+        frame_data = {'src_addr': self._local_mac,
+                      'dst_addr': self._remote_mac,
+                      'ether_type': self._ether_type}
         return Frame(frame_data, self._vlan_tag)
 
 
@@ -695,7 +690,7 @@ class EthernetHandler:
         Getter for mtu
         '''
         if self._mtu is None:
-            return get_mtu(self._interface)
+            self._mtu = get_mtu(self._interface)
         return self._mtu
 
     def __set_mtu(self, mtu):
