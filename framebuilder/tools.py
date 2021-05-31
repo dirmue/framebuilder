@@ -268,7 +268,7 @@ def hide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp'):
         print(ex)
 
 
-def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=1):
+def unhide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp', delay=0):
     '''
     Removes the iptable rule that was created by hide_from_kernel. As there
     still might be incoming packets (e.g. ACKs), it is reasonable to wait some
@@ -320,7 +320,7 @@ def hide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp'):
         print(ex)
 
 
-def unhide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp', delay=1):
+def unhide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp', delay=0):
     '''
     Removes the iptable rule that was created by hide_from_kernel. As there
     still might be incoming packets (e.g. ACKs), it is reasonable to wait some
