@@ -33,6 +33,6 @@ else:
                 break
     except (KeyboardInterrupt, EOFError):
         pass
-h.close()
-print(h.read().decode('utf-8'), end='')
-print('\n\nBye!')
+    h.close()
+    print(h.read().decode('utf-8'), end='')
+    print('\n\nBye!')
