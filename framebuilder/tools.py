@@ -484,7 +484,7 @@ def get_rfc793_isn():
     Return a new 32 bit initial TCP segment number based on the insecure
     (but simple) RFC793 timer method
     '''
-    return (int(time.time_ns() // 1e6) >> 2) & 0xfffffff
+    return (int(time.time_ns() // 1e6) >> 2) & 0xffffffff
 
 
 def tcp_sn_lt(val1, val2):
@@ -509,10 +509,16 @@ def tcp_sn_gt(val1, val2):
 
 def get_local_tcp_port():
     '''
-    Return the next available TCP client port
-    TODO!
+    Return an available TCP client port
     '''
-    return 33333
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect(('127.0.0.1', 0))
+    except:
+        pass
+    local_port = sock.getsockname()[1]
+    sock.close()
+    return local_port
 
 
 def mod32(value: int):

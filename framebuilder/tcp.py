@@ -918,11 +918,8 @@ class TCPHandler(ipv4.IPv4Handler):
     # -- not implemented here --
     TIME_WAIT = 10
 
-    DEBUG = False
-
-
     def __init__(self, interface, local_port=None, remote_ip=None, block=1,
-                 t_out=3.0):
+                 t_out=3.0, debug=False):
         '''
         initialize TCP connection parameters
 
@@ -943,6 +940,7 @@ class TCPHandler(ipv4.IPv4Handler):
                           RCV.NXT    RCV.NXT
                                     +RCV.WND
         '''
+        self.debug = debug
         self._interface = interface
         self._local_port = local_port
         self._remote_port = None
@@ -1015,7 +1013,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._rcv_wnd = (self._max_rwin // self._mss) * self._mss
 
         # remote receive window
-        self._rem_rwnd = self._rcv_wnd
+        self._rem_rwnd = 0
 
         # send window size (multiply by MSS)
         # let's start with 1 segment
@@ -1119,6 +1117,10 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         handler = cls(interface, local_port)
         handler.state = cls.LISTEN
+        if self.debug:
+            tools.print_rgb('LISTEN on interface {} port {}'.format(
+                interface, local_port),
+                rgb=(127, 127, 127), bold=True)
         tools.hide_from_krnl_in(handler.interface, handler.local_ip,
                 handler.local_port)
         while True:
@@ -1134,6 +1136,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         :param remote_ip: IP address of the server
         :param remote_port: TCP port to connect to
+        :param local_port: local TCP port
         '''
         if self.state != self.CLOSED:
             raise err.NoTCPConnectionException('open() while status not closed')
@@ -1158,6 +1161,10 @@ class TCPHandler(ipv4.IPv4Handler):
         segment.add_tcp_mss_option(self._mss)
         self.send_segment(segment)
         self.state = self.SYN_SENT
+        if self.debug:
+            tools.print_rgb('SYN-SENT to {}:{}'.format(
+                self.remote_ip, self.remote_port),
+                rgb=(127, 127, 127), bold=True)
         while True:
             self.receive_segment()
             if self.state == self.ESTABLISHED:
@@ -1178,6 +1185,22 @@ class TCPHandler(ipv4.IPv4Handler):
             self._recv_buffer.clear()
             return data
         return b''
+
+
+    def read(self, size=0):
+        '''
+        Read size bytes from receive buffer
+        :param size: if less or equal 0 read everything
+        '''
+        result = b''
+        if size > 0:
+            result = self._recv_buffer[:size]
+            self._recv_buffer = self._recv_buffer[size:]
+        else:
+            result = copy.copy(self._recv_buffer)
+            self._recv_buffer = bytearray(b'')
+        self._rcv_wnd = self._max_rwin - len(self._recv_buffer)
+        return result
 
 
     def send(self, data, dont_frag=True):
@@ -1206,10 +1229,12 @@ class TCPHandler(ipv4.IPv4Handler):
             # choose the lower of send window or remote receive window as
             # effective send window
             eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
-
+            if eff_snd_wnd == 0 and self.debug:
+                tools.print_rgb('\r\r\r! Zero Window !', rgb=(255, 50, 50))
             while tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
-                            and not self._send_buffer.empty():
+                            and not self._send_buffer.empty() \
+                            and eff_snd_wnd > 0:
                 segment = TCPSegment()
                 segment.payload = self._send_buffer.get()
                 segment.src_port = self.local_port
@@ -1244,9 +1269,13 @@ class TCPHandler(ipv4.IPv4Handler):
         segment.window = self._rcv_wnd
         self.send_segment(segment)
         self.state = self.FIN_WAIT_1
-        while self.state != self.CLOSING:
+        while self.state != self.CLOSING and self.state != self.TIME_WAIT and \
+                self.state != self.CLOSED:
             self.receive_segment()
         self.state = self.CLOSED
+        if self.debug:
+            tools.print_rgb('connection CLOSED',
+                    rgb=(127, 127, 127), bold=True)
 
 
     def abort(self):
@@ -1308,13 +1337,16 @@ class TCPHandler(ipv4.IPv4Handler):
             self._rcv_next = self._irs
             self.remote_port = segment.src_port
             self.state = self.SYN_RECEIVED
+            if self.debug:
+                tools.print_rgb('entering SYN-RECEIVED state',
+                        rgb=(127, 127, 127), bold=True)
             return segment
         return None
 
 
     def __recv_syn_sent(self, segment: TCPSegment):
         '''
-        Process incoming segmnt in SYN_SENT state
+        Process incoming segment in SYN_SENT state
         :param packet: Incoming packet
         '''
         conditions = (
@@ -1333,8 +1365,14 @@ class TCPHandler(ipv4.IPv4Handler):
             self._rcv_next = self._irs
             self.remote_port = segment.src_port
             self.state = self.ESTABLISHED
+            if self.debug:
+                tools.print_rgb('entering ESTABLISHED state',
+                        rgb=(127, 127, 127), bold=True)
             return segment
         elif segment.rst == 1:
+            if self.debug:
+                tools.print_rgb('RST received, entering CLOSED state',
+                        rgb=(127, 127, 127), bold=True)
             self.state = self.CLOSED
         return None
 
@@ -1353,12 +1391,21 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if all(conditions):
             self.state = self.ESTABLISHED
+            if self.debug:
+                tools.print_rgb('entering ESTABLISHED state',
+                        rgb=(127, 127, 127), bold=True)
             return segment
         elif segment.rst == 1:
             self.state = self.LISTEN
+            if self.debug:
+                tools.print_rgb('RST received, entering LISTEN state',
+                        rgb=(127, 127, 127), bold=True)
             return None
         elif segment.fin == 1:
             self.state = self.FIN_WAIT_1
+            if self.debug:
+                tools.print_rgb('FIN received, entering FIN-WAIT-1 state',
+                        rgb=(127, 127, 127), bold=True)
             return segment
         return None
 
@@ -1377,7 +1424,15 @@ class TCPHandler(ipv4.IPv4Handler):
         if all(conditions):
             if segment.fin == 1:
                 self.state = self.CLOSE_WAIT
+                if self.debug:
+                    tools.print_rgb('FIN received, entering CLOSE-WAIT state',
+                            rgb=(127, 127, 127), bold=True)
             return segment
+        elif segment.rst == 1:
+            if self.debug:
+                tools.print_rgb('RST received, aborting connection',
+                        rgb=(127, 127, 127), bold=True)
+            self.abort()
         return None
 
 
@@ -1394,10 +1449,19 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if all(conditions):
             self.state = self.FIN_WAIT_2
+            if self.debug:
+                tools.print_rgb('entering FIN-WAIT-2 state',
+                        rgb=(127, 127, 127), bold=True)
             if segment.fin == 1:
                 self.state = self.CLOSING
+                if self.debug:
+                    tools.print_rgb('FIN received, entering CLOSING state',
+                            rgb=(127, 127, 127), bold=True)
             return segment
         elif segment.rst == 1:
+            if self.debug:
+                tools.print_rgb('RST received, aborting connection',
+                        rgb=(127, 127, 127), bold=True)
             self.state = self.CLOSED
         return None
 
@@ -1410,15 +1474,21 @@ class TCPHandler(ipv4.IPv4Handler):
         conditions = (
                 segment.ack == 1,
                 segment.rst == 0,
-                segment.syn == 0,
-                segment.fin == 1
+                segment.syn == 0
                 )
 
         if all(conditions):
-            self.state = self.TIME_WAIT
+            if segment.fin == 1:
+                self.state = self.TIME_WAIT
+                if self.debug:
+                    tools.print_rgb('FIN received, entering TIME-WAIT state',
+                            rgb=(127, 127, 127), bold=True)
             return segment
         elif segment.rst == 1:
             self.state = self.CLOSED
+            if self.debug:
+                tools.print_rgb('RST received, entering CLOSED state',
+                        rgb=(127, 127, 127), bold=True)
         return None
 
 
@@ -1438,6 +1508,9 @@ class TCPHandler(ipv4.IPv4Handler):
             return segment
         elif segment.rst == 1:
             self.state = self.CLOSED
+            if self.debug:
+                tools.print_rgb('RST received, entering CLOSED state',
+                        rgb=(127, 127, 127), bold=True)
         return None
 
 
@@ -1448,6 +1521,9 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         if segment.ack == 1:
             self.state = self.TIME_WAIT
+            if self.debug:
+                tools.print_rgb('entering TIME-WAIT state',
+                        rgb=(127, 127, 127), bold=True)
             return segment
         return None
 
@@ -1457,9 +1533,10 @@ class TCPHandler(ipv4.IPv4Handler):
         Process incoming segment in TIME_WAIT state
         :param packet: Incoming packet
         '''
-        if segment.ack == 1:
-            self.state = self.CLOSED
-            return segment
+        if self.debug:
+            tools.print_rgb('received segment in TIME-WAIT state, sending RST',
+                    rgb=(127, 127, 127), bold=True)
+            self.abort()
         return None
 
 
@@ -1470,10 +1547,17 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         if segment.ack == 1:
             self.state = self.CLOSED
-            if segment.rst != 1:
-                return segment
+            if self.debug:
+                tools.print_rgb('entering CLOSED state',
+                        rgb=(127, 127, 127), bold=True)
             tools.unhide_from_krnl_in(self.interface, self.local_ip,
                     self.local_port)
+            if segment.rst != 1:
+                return segment
+            else:
+                if self.debug:
+                    tools.print_rgb('entering TIME-WAIT state',
+                            rgb=(127, 127, 127), bold=True)
         return None
 
 
@@ -1489,24 +1573,27 @@ class TCPHandler(ipv4.IPv4Handler):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
                 self._rtx_queue.remove(self._rtx_queue[index])
-                ### DEBUG ###
-                if self.DEBUG:
-                    print('REMOVED segment from rtx_queue (SEQ {}; ACK {})'.format(
+                if self.debug:
+                    tools.print_rgb(
+                            '\tremoved segment from retransmission queue',
+                            rgb=(127, 127, 127))
+                    tools.print_rgb('\t\tSEQNR {} ACKNR {}'.format(
                         rtx_entry['segment'].seq_nr,
-                        rtx_entry['segment'].ack_nr))
-                ### END DEBUG ###
+                        rtx_entry['segment'].ack_nr), rgb=(127, 127, 127))
             elif tools.tcp_sn_gt(self._snd_una,
                     rtx_entry['segment'].seq_nr):
                 pl_slice = rtx_entry['segment'].payload[:self._snd_una]
                 rtx_entry['segment'].payload = pl_slice
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
-                ### DEBUG ###
-                if self.DEBUG:
-                    print('SHORTENED segment payload in rtx_queue (SEQ {}; ACK {})'.format(
+                if self.debug:
+                    tools.print_rgb(
+                            '\tcut segment payload in retransmission queue',
+                            rgb=(127, 100, 100))
+                    tools.print_rgb('\t\tSEQNR {} ACKNR {}'.format(
                         rtx_entry['segment'].seq_nr,
-                        rtx_entry['segment'].ack_nr))
-                ### END DEBUG ###
+                        rtx_entry['segment'].ack_nr), rgb=(127, 100, 100))
+                index += 1
             else:
                 index += 1
 
@@ -1522,23 +1609,19 @@ class TCPHandler(ipv4.IPv4Handler):
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
                     < curr_time:
                 # Timeout! Set send window to 1 MSS and divide ssthresh by 2
-                ### DEBUG ###
-                if self.DEBUG:
-                    print('!!! T I M E O U T !!!')
-                    print('seq: {} ack: {} time_diff: {} rto: {} delay: {} rtx_qlen: {} ssthresh: {} snd_win: {} snd_una: {} snd_nxt: {}'.format(rtx_entry['segment'].seq_nr,
+                if self.debug:
+                    tools.print_rgb(
+                        '\tretransmission timeout exceeded, resend segment',
+                        rgb=(255, 50, 50), bold=True)
+                    tools.print_rgb(
+                        '\t\tSEQNR {} ACKNR {} WAITT {} ns RTO {} ns'.format(
+                            rtx_entry['segment'].seq_nr,
                             rtx_entry['segment'].ack_nr,
                             curr_time - rtx_entry['time'],
-                            self._rto, rtx_entry['delay'],
-                            len(self._rtx_queue),
-                            self._ssthresh,
-                            self._snd_wnd,
-                            self._snd_una,
-                            self._snd_nxt))
-                ### END DEBUG ###
+                            self._rto), rgb=(255, 50, 50))
                 if self._ssthresh > 1:
                     self._ssthresh = self._ssthresh // 2
                 self._snd_wnd = 1
-
                 if rtx_entry['delay'] > 8:
                     self.abort()
                     break
@@ -1553,6 +1636,7 @@ class TCPHandler(ipv4.IPv4Handler):
         Remote port and remote IP must be set appropriately
 
         :param segment: <TCPSegment> segment to send
+        :param dont_frag: Add DF Flag in IP header?
         '''
         ack_len = segment.length
         # SYN and FIN are treated as 1 virtual byte
@@ -1565,18 +1649,14 @@ class TCPHandler(ipv4.IPv4Handler):
                                     'time': time_ns(),
                                     'delay': 0})
             self._snd_nxt = tools.mod32(self._snd_nxt + ack_len)
-        ### DEBUG ###
-        if self.DEBUG:
-            print('SEND {} Bytes | seq: {} ack: {} wnd: {} [expected ack: {}] flags: {} time: {} | SND_UNA: {} SND_NXT: {} SND_WND: {}'.format(segment.length,
-                segment.seq_nr,
-                segment.ack_nr,
-                segment.window,
-                segment.seq_nr + segment.length,
-                segment.get_flag_str(),
-                time_ns(), self._snd_una,
-                self._snd_nxt,
-                self._snd_wnd * self._mss))
-        ### END DEBUG ###
+        if self.debug:
+            tools.print_rgb(
+                    '---{} Bytes-SEQ {}-ACK {}-RWND {}-FLAGS {}---> '.format(
+                        segment.length,
+                        segment.seq_nr,
+                        segment.ack_nr,
+                        segment.window,
+                        segment.get_flag_str()), rgb=(50, 255, 50), bold=True)
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1620,7 +1700,15 @@ class TCPHandler(ipv4.IPv4Handler):
         next_seg = self._recv_seg_handlers[self.state](segment)
 
         if next_seg is not None:
-            self._recv_buffer.extend(next_seg.payload)
+            # update receive window size
+            pl_len = next_seg.length
+            if pl_len > 0:
+                self._recv_buffer.extend(next_seg.payload)
+                rwin_bytes = self._rcv_wnd * self._mss
+                if rwin_bytes > pl_len:
+                    self._rcv_wnd = (rwin_bytes - pl_len) // self._mss
+                else:
+                    self._rcv_wnd = 0
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
 
@@ -1639,6 +1727,16 @@ class TCPHandler(ipv4.IPv4Handler):
             if self._rem_rwnd != next_seg.window:
                 self._rem_rwnd = next_seg.window
 
+            if self.debug:
+                tools.print_rgb(
+                        '<---{} Bytes-SEQ {}-ACK {}-RWND {}-FLAGS {}---'.format(
+                            next_seg.length,
+                            next_seg.seq_nr,
+                            next_seg.ack_nr,
+                            next_seg.window,
+                            next_seg.get_flag_str()),
+                        rgb=(100, 100, 255), bold=True)
+
             # only acknowledge if rcv_nxt is increased
             if tools.tcp_sn_gt(self._rcv_next, old_rcv_next):
                 self.__send_ack()
@@ -1648,19 +1746,8 @@ class TCPHandler(ipv4.IPv4Handler):
                     # Slow Start
                     self._snd_wnd <<= 1
                 elif (self._snd_wnd + 1) * self._mss < self._max_rwin:
-                    # Congestion Avoidance (AIMD)
+                    # Congestion Avoidance
                     self._snd_wnd += 1
-
-            ### DEBUG ###
-            if self.DEBUG:
-                print('RECV {} Bytes | seq: {} ack: {} wnd: {} [expected ack: {}] flags: {} time: {}'.format(next_seg.length,
-                    next_seg.seq_nr,
-                    next_seg.ack_nr,
-                    next_seg.window,
-                    next_seg.seq_nr + next_seg.length,
-                    next_seg.get_flag_str(),
-                    time_ns()))
-            ### END DEBUG ###
             return next_seg
         return None
 
