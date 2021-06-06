@@ -1634,7 +1634,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self._snd_nxt = tools.mod32(self._snd_nxt + ack_len)
         if self.debug:
             tools.print_rgb(
-                    '-{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
+                    '\n-{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
                         segment.length,
                         segment.seq_nr,
                         segment.ack_nr) + \
@@ -1675,7 +1675,8 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        if self._rcv_next is not None and self.state != self.SYN_SENT:
+        if self._rcv_next is not None and self.state != self.SYN_SENT \
+                and self.state != self.LISTEN:
             if not self._is_in_rcv_seq_space(segment):
                 return None
 
@@ -1711,7 +1712,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
             if self.debug:
                 tools.print_rgb(
-                        '<{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
+                        '\n<{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
                             next_seg.length,
                             next_seg.seq_nr,
                             next_seg.ack_nr) + \
