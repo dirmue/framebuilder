@@ -343,7 +343,10 @@ class Frame:
             raise MTUExceededException('{} Bytes'.format(len(self.payload)))
         frame_data = struct.pack('!{}s'.format(len(self.get_bytes())),
                                  self.get_bytes())
-        return socket.send(frame_data)
+        try:
+            return socket.send(frame_data)
+        except OSError:
+            return 0
 
 
 class ArpMessage(Frame):
