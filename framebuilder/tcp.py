@@ -1174,18 +1174,18 @@ class TCPHandler(ipv4.IPv4Handler):
         result = b''
         if size > 0:
             if len(self._recv_buffer) >= size:
+                if self.debug:
+                    tools.print_rgb(f'state: {self.state} ', rgb=(255, 0, 0), end='')
+                    tools.print_rgb(f'una: {self._snd_una} ', rgb=(255, 0, 0), end='')
+                    tools.print_rgb(f'rcv_buf_len: {len(self._recv_buffer)} Bytes', rgb=(255, 0, 0), end='')
+                    tools.print_rgb(f's_nxt: {self._snd_nxt} ', rgb=(255, 0, 0), end='')
+                    tools.print_rgb(f'r_nxt: {self._rcv_next}', rgb=(255, 0, 0))
                 result = self._recv_buffer[:size]
                 self._recv_buffer = self._recv_buffer[size:]
         else:
             result = copy.copy(self._recv_buffer)
             self._recv_buffer.clear()
         self._rcv_wnd = self._max_rwin - len(self._recv_buffer)
-        if self.debug:
-            tools.print_rgb(f'state: {self.state} ', rgb=(255, 0, 0), end='')
-            tools.print_rgb(f'una: {self._snd_una} ', rgb=(255, 0, 0), end='')
-            tools.print_rgb(f'rcv_buf_len: {len(self._recv_buffer)}', rgb=(255, 0, 0), end='')
-            tools.print_rgb(f's_nxt: {self._snd_nxt} ', rgb=(255, 0, 0), end='')
-            tools.print_rgb(f'r_nxt: {self._rcv_next}', rgb=(255, 0, 0))
         return result
 
 
