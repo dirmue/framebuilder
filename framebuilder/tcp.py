@@ -1264,6 +1264,8 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Actively reset the connection and send RST
         '''
+        if self.debug:
+            tools.print_rgb(f'state: {self.state} una: {self._snd_una} snd_nxt: {self._snd_nxt} rcv_nxt: {self._rcv_next}', rgb=(255, 0, 0))
         segment = TCPSegment()
         segment.src_port = self.local_port
         segment.dst_port = self.remote_port
@@ -1282,7 +1284,8 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.ack = 1
         if not self._send_buffer.empty():
             answer.payload = self._send_buffer.get()
-        if self.state == self.CLOSE_WAIT:
+        if self.state == self.CLOSE_WAIT \
+                and len(self._recv_buffer) == 0:
             answer.fin = 1
             self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
@@ -1564,9 +1567,10 @@ class TCPHandler(ipv4.IPv4Handler):
                     tools.print_rgb(
                             '\tremoving segment from retransmission queue',
                             rgb=(127, 127, 127))
-                    tools.print_rgb('\t\tSEQNR {} ACKNR {}'.format(
+                    tools.print_rgb('\t\tSEQNR {} ACKNR {} UNA {}'.format(
                         rtx_entry['segment'].seq_nr,
-                        rtx_entry['segment'].ack_nr), rgb=(127, 127, 127))
+                        rtx_entry['segment'].ack_nr,
+                        self._snd_una), rgb=(127, 127, 127))
                     tools.print_rgb('\t\t{} segments in queue'.format(
                         len(self._rtx_queue)), rgb=(127, 127, 127))
             elif tools.tcp_sn_gt(self._snd_una,
