@@ -1180,6 +1180,12 @@ class TCPHandler(ipv4.IPv4Handler):
             result = copy.copy(self._recv_buffer)
             self._recv_buffer.clear()
         self._rcv_wnd = self._max_rwin - len(self._recv_buffer)
+        if self.debug:
+            tools.print_rgb(f'state: {self.state} ', rgb=(255, 0, 0), end='')
+            tools.print_rgb(f'una: {self._snd_una} ', rgb=(255, 0, 0), end='')
+            tools.print_rgb(f'rcv_buf_len: {len(self._recv_buffer)}', rgb=(255, 0, 0), end='')
+            tools.print_rgb(f's_nxt: {self._snd_nxt} ', rgb=(255, 0, 0), end='')
+            tools.print_rgb(f'r_nxt: {self._rcv_next}', rgb=(255, 0, 0))
         return result
 
 
@@ -1264,8 +1270,6 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Actively reset the connection and send RST
         '''
-        if self.debug:
-            tools.print_rgb(f'state: {self.state} una: {self._snd_una} snd_nxt: {self._snd_nxt} rcv_nxt: {self._rcv_next}', rgb=(255, 0, 0))
         segment = TCPSegment()
         segment.src_port = self.local_port
         segment.dst_port = self.remote_port
@@ -1285,7 +1289,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if not self._send_buffer.empty():
             answer.payload = self._send_buffer.get()
         if self.state == self.CLOSE_WAIT \
-                and len(self._recv_buffer) == 0:
+                and len(self._recv_buffer) == 0: #????
             answer.fin = 1
             self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
