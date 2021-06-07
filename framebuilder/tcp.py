@@ -872,51 +872,52 @@ class TCPHandler(ipv4.IPv4Handler):
     - local port selection for client connections
     '''
 
-    # define connection state constants
-
+    ##### define connection state constants #####
     # no connection state at all
     CLOSED = 0
-
     # represents waiting for a connection request from any remote TCP and port
     LISTEN = 1
-
     # represents waiting for a matching connection request after having sent a
     # connection request
     SYN_SENT = 2
-
     # represents waiting for a confirming connection request acknowledgment
     # after having both received and sent a connection request
     SYN_RECEIVED = 3
-
     # represents an open connection, data received can be delivered to the
     # user; the normal state for the data transfer phase of the connection.
     ESTABLISHED = 4
-
     # represents waiting for a connection termination request from the remote
     # TCP, or an acknowledgment of the connection termination request
     # previously sent
     FIN_WAIT_1 = 5
-
     # represents waiting for a connection termination request from remote TCP
     FIN_WAIT_2 = 6
-
     # represents waiting for a connection termination request from the local
     # user
     CLOSE_WAIT = 7
-
     # represents waiting for a connection termination request acknowledgment
     # from the remote TCP
     CLOSING = 8
-
     # represents waiting for an acknowledgment of the connection termination
     # request previously sent to the remote TCP (which includes an
     # acknowledgment of its connection termination request)
     LAST_ACK = 9
-
     # represents waiting for enough time to pass to be sure the remote TCP
     # received the acknowledgment of its connection termination request
     # -- not implemented here --
     TIME_WAIT = 10
+
+    ##### define segment categories #####
+    SEG_UNKNOWN = 0
+    SEG_SYN = 1
+    SEG_SYN_ACK = 2
+    SEG_FIRST_ACK = 4
+    SEG_PURE_ACK = 8
+    SEG_ACK = 16
+    SEG_DUP_ACK = 32
+    SEG_FIN = 64
+    SEG_RST = 128
+    SEG_SPUR_RETRANS = 256
 
     def __init__(self, interface, local_port=None, remote_ip=None, block=1,
                  t_out=3.0, debug=False):
@@ -1172,8 +1173,9 @@ class TCPHandler(ipv4.IPv4Handler):
         self.receive_segment(pass_on_error)
         result = b''
         if size > 0:
-            result = self._recv_buffer[:size]
-            self._recv_buffer = self._recv_buffer[size:]
+            if len(self._recv_buffer) >= size:
+                result = self._recv_buffer[:size]
+                self._recv_buffer = self._recv_buffer[size:]
         else:
             result = copy.copy(self._recv_buffer)
             self._recv_buffer.clear()
@@ -1226,6 +1228,8 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.ack_nr = self._rcv_next
                 segment.window = self._rcv_wnd
                 self.send_segment(segment)
+                self.receive_segment()
+                self.__process_rtx_queue()
             self.receive_segment()
             self.__process_rtx_queue()
 
@@ -1567,7 +1571,7 @@ class TCPHandler(ipv4.IPv4Handler):
                         len(self._rtx_queue)), rgb=(127, 127, 127))
             elif tools.tcp_sn_gt(self._snd_una,
                     rtx_entry['segment'].seq_nr):
-                pl_slice = rtx_entry['segment'].payload[:self._snd_una]
+                pl_slice = rtx_entry['segment'].payload[self._snd_una:]
                 rtx_entry['segment'].payload = pl_slice
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
@@ -1578,6 +1582,10 @@ class TCPHandler(ipv4.IPv4Handler):
                     tools.print_rgb('\t\tSEQNR {} ACKNR {}'.format(
                         rtx_entry['segment'].seq_nr,
                         rtx_entry['segment'].ack_nr), rgb=(127, 100, 100))
+                    tools.print_rgb('\t\tUNA {} > {}? length {} Bytes'.format(
+                        self._snd_una,
+                        rtx_entry['segment'].seq_nr,
+                        rtx_entry['segment'].length), rgb=(255, 0, 0))
                 index += 1
             else:
                 index += 1
@@ -1644,6 +1652,73 @@ class TCPHandler(ipv4.IPv4Handler):
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
+    def __get_cat_str(self, cat_bitmap):
+        '''
+        Return a string representation of the category bitmap
+        :param cat_bitmap: category bitmap
+        '''
+        cat_list = []
+        if cat_bitmap == self.SEG_UNKNOWN:
+            return 'unknown'
+        if cat_bitmap & self.SEG_SYN:
+            cat_list.append('SYN')
+        if cat_bitmap & self.SEG_SYN_ACK:
+            cat_list.append('SYN-ACK')
+        if cat_bitmap & self.SEG_DUP_ACK:
+            cat_list.append('DUP-ACK')
+        if cat_bitmap & self.SEG_FIN:
+            cat_list.append('FIN')
+        if cat_bitmap & self.SEG_FIRST_ACK:
+            cat_list.append('FIRST-ACK')
+        if cat_bitmap & self.SEG_ACK:
+            cat_list.append('ACK')
+        if cat_bitmap & self.SEG_PURE_ACK:
+            cat_list.append('PURE-ACK')
+        if cat_bitmap & self.SEG_RST:
+            cat_list.append('RST')
+        if cat_bitmap & self.SEG_SPUR_RETRANS:
+            cat_list.append('SPUR-RETRANS')
+        return '|'.join(cat_list)
+
+
+    def __categorize_segment(self, segment: TCPSegment):
+        '''
+        Categorize segment, OR-ing all category flags together and return result
+        
+        :param segment: segment to evaluate
+        '''
+        result = 0
+        seg_size = segment.length
+        if segment.syn == 1 and segment.ack == 0:
+            result |= self.SEG_SYN
+        if segment.syn == 1 and segment.ack == 1:
+            result |= self.SEG_SYN_ACK
+        if segment.rst == 1:
+            result |= self.SEG_RST
+        if segment.fin == 1:
+            result |= self.SEG_FIN
+        if seg_size == 0 \
+                and tools.tcp_sn_lt(segment.ack_nr, self._snd_una) \
+                and segment.window == self._rem_rwnd \
+                and self._rcv_next != 0 \
+                and self._snd_nxt != self._iss \
+                and result & self.SEG_SYN == 0 \
+                and result & self.SEG_FIN == 0 \
+                and result & self.SEG_SYN_ACK == 0 \
+                and result & self.SEG_RST == 0:
+            result |= self.SEG_DUP_ACK
+        if seg_size > 0 and tools.tcp_sn_lt(segment.ack_nr, self._snd_una) \
+                and result & self.SEG_SYN == 0:
+            result |= self.SEG_SPUR_RETRANS
+        if result == 0 and self._is_in_rcv_seq_space(segment):
+            if seg_size == 0:
+                if segment.ack_nr == tools.mod32(self._iss + 1):
+                    result |= self.SEG_FIRST_ACK
+                result |= self.SEG_PURE_ACK
+            result |= self.SEG_ACK
+        return result
+
+
     def receive_segment(self, pass_on_error=True):
         '''
         Reveive a single TCP segment
@@ -1683,13 +1758,15 @@ class TCPHandler(ipv4.IPv4Handler):
         next_seg = self._recv_seg_handlers[self.state](segment)
 
         if next_seg is not None:
+            seg_cat = self.__categorize_segment(next_seg)
             # update receive window size
             pl_len = next_seg.length
             if pl_len > 0:
                 self._recv_buffer.extend(next_seg.payload)
                 rwin_bytes = self._rcv_wnd * self._mss
-                if rwin_bytes > pl_len:
-                    self._rcv_wnd = (rwin_bytes - pl_len) // self._mss
+                buf_len = len(self._recv_buffer)
+                if rwin_bytes > buf_len:
+                    self._rcv_wnd = (rwin_bytes - buf_len) // self._mss
                 else:
                     self._rcv_wnd = 0
             if self.state == self.SYN_RECEIVED:
@@ -1720,11 +1797,14 @@ class TCPHandler(ipv4.IPv4Handler):
                             next_seg.window,
                             next_seg.get_flag_str()),
                         rgb=(150, 150, 255), bold=True)
+                tools.print_rgb('\tsegment categories: [{}]'.format(
+                        self.__get_cat_str(seg_cat)),
+                        rgb=(75, 75, 127), bold=True)
 
-            # only acknowledge if rcv_nxt is increased
-            if tools.tcp_sn_gt(self._rcv_next, old_rcv_next):
+            # only acknowledge if segment is not a pure ACK and not a reset
+            if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
                 self.__send_ack()
-            else:
+            if seg_cat & self.SEG_ACK:
                 # ACK received
                 if (self._snd_wnd << 1) <= self._ssthresh:
                     # Slow Start
