@@ -1830,7 +1830,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     tools.print_rgb(
                             '\tincreased cwnd to {} segments'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
-            elif (self._snd_wnd + 1) * self._mss < self._max_rwin:
+            elif (self._snd_wnd + 1) * self._mss:
                 # Congestion Avoidance
                 self._snd_wnd += 1
                 if self.debug:
