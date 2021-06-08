@@ -1561,9 +1561,7 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         index = 0
         for rtx_entry in self._rtx_queue:
-            if tools.tcp_sn_gt(self._snd_una,\
-                    tools.mod32(rtx_entry['segment'].seq_nr + \
-                            rtx_entry['segment'].length - 1)):
+            if tools.tcp_sn_gt(self._snd_una, tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length)):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
                 self._rtx_queue.remove(self._rtx_queue[index])
@@ -1758,7 +1756,8 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        if self._rcv_next is not None and self.state != self.SYN_SENT \
+        if self._rcv_next is not None \
+                and self.state != self.SYN_SENT \
                 and self.state != self.LISTEN:
             if not self._is_in_rcv_seq_space(segment):
                 return None
