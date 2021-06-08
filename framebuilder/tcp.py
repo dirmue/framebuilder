@@ -1838,7 +1838,6 @@ class TCPHandler(ipv4.IPv4Handler):
                             '\tincreased cwnd to {} segments'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
         return next_seg
-    return None
 
 
     def _is_in_rcv_seq_space(self, segment: TCPSegment):
