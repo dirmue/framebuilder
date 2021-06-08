@@ -1756,7 +1756,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        if self.state is not in [self.SYN_SENT, self.LISTEN]:
+        if self.state not in [self.SYN_SENT, self.LISTEN]:
             if not self._is_in_rcv_seq_space(segment):
                 return None
 
