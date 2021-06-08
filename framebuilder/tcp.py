@@ -1210,6 +1210,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self._send_buffer.put(data[index:index+self._mss])
             index += self._mss
 
+        count = 0
         while ((not self._send_buffer.empty()) or len(self._rtx_queue) > 0) \
                 and self.state != self.CLOSED:
             # choose the lower of send window or remote receive window as
@@ -1234,11 +1235,12 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.ack_nr = self._rcv_next
                 segment.window = self._rcv_wnd
                 self.send_segment(segment)
-                self.receive_segment()
+            ack = self.receive_segment()
+            if ack is not None:
                 self.__process_rtx_queue()
-            self.receive_segment()
-            self.__process_rtx_queue()
-
+            else:
+                print(f'outer recieve {count}')
+            count += 1
 
     def close(self):
         '''
@@ -1602,8 +1604,8 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         self.__clean_rtx_queue()
         # resend timed out segments
-        curr_time = time_ns()
         for rtx_entry in self._rtx_queue:
+            curr_time = time_ns()
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
                     < curr_time:
                 # Timeout! Set send window to 1 MSS and divide ssthresh by 2
@@ -1623,7 +1625,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 if rtx_entry['delay'] > 8:
                     self.abort()
                     break
-                rtx_entry['time'] = time_ns()
+                rtx_entry['time'] = curr_time
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
 

@@ -733,7 +733,7 @@ class EthernetHandler:
         :promisc: <bool> receive frames that are not for us
         '''
         try:
-            frame_bytes, addr_info = self._socket.recvfrom(65536)
+            frame_bytes, addr_info = self._socket.recvfrom(65535)
             frame_type = addr_info[2]
             frame = Frame.from_bytes(frame_bytes)
 
