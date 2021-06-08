@@ -1766,12 +1766,17 @@ class TCPHandler(ipv4.IPv4Handler):
         next_seg = self._recv_seg_handlers[self.state](segment)
 
         if next_seg is not None:
+
+            # evaluate checksum
+            if not next_seg.verify_checksum:
+                return None
+
             seg_cat = self.__categorize_segment(next_seg)
 
+            # drop out of order segments
             if next_seg.seq_nr != self._rcv_next \
                     and self.state != self.LISTEN \
                     and self.state != self.SYN_SENT:
-                # remove out of order segments for now
                 return None
 
             # update receive window size
@@ -1788,9 +1793,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
 
-            old_rcv_next = self._rcv_next
             self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
-
             # SYN and FIN flag are treated as one virtual byte
             if next_seg.syn == 1 or next_seg.fin == 1:
                 self._rcv_next = tools.mod32(self._rcv_next + 1)
