@@ -1767,6 +1767,13 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if next_seg is not None:
             seg_cat = self.__categorize_segment(next_seg)
+
+            if next_seg.seq_nr != self._rcv_next \
+                    and self.state != self.LISTEN \
+                    and self.state != self.SYN_SENT:
+                # remove out of order segments for now
+                return None
+
             # update receive window size
             pl_len = next_seg.length
             if pl_len > 0:
@@ -1777,6 +1784,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     self._rcv_wnd = (rwin_bytes - buf_len) // self._mss
                 else:
                     self._rcv_wnd = 0
+
             if self.state == self.SYN_RECEIVED:
                 self.remote_ip = packet.src_addr
 
