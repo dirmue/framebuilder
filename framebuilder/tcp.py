@@ -1774,7 +1774,7 @@ class TCPHandler(ipv4.IPv4Handler):
             seg_cat = self.__categorize_segment(next_seg)
 
             # drop out of order segments
-            if next_seg.seq_nr != self._rcv_next \
+            if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_next) \
                     and self.state != self.LISTEN \
                     and self.state != self.SYN_SENT:
                 return None
