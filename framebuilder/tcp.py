@@ -1561,7 +1561,7 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         index = 0
         for rtx_entry in self._rtx_queue:
-            if tools.tcp_sn_gt(self._snd_una, tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length)):
+            if tools.tcp_sn_gt(self._snd_una, tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length - 1)):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
                 self._rtx_queue.remove(self._rtx_queue[index])
@@ -1756,90 +1756,89 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        if self._rcv_next is not None \
-                and self.state != self.SYN_SENT \
-                and self.state != self.LISTEN:
+        if self.state is not in [self.SYN_SENT, self.LISTEN]:
             if not self._is_in_rcv_seq_space(segment):
                 return None
 
         next_seg = self._recv_seg_handlers[self.state](segment)
 
-        if next_seg is not None:
+        if next_seg is None:
+            return
 
-            # evaluate checksum
-            if not next_seg.verify_checksum:
-                return None
+        # evaluate checksum
+        if not next_seg.verify_checksum:
+            return None
 
-            seg_cat = self.__categorize_segment(next_seg)
+        seg_cat = self.__categorize_segment(next_seg)
 
-            # drop out of order segments
-            if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_next) \
-                    and self.state != self.LISTEN \
-                    and self.state != self.SYN_SENT:
-                return None
+        # drop out of order segments
+        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_next):
+            return None
 
-            # update receive window size
-            pl_len = next_seg.length
-            if pl_len > 0:
-                self._recv_buffer.extend(next_seg.payload)
-                rwin_bytes = self._rcv_wnd * self._mss
-                buf_len = len(self._recv_buffer)
-                if rwin_bytes > buf_len:
-                    self._rcv_wnd = (rwin_bytes - buf_len) // self._mss
-                else:
-                    self._rcv_wnd = 0
+        # update receive window size
+        pl_len = next_seg.length
+        if pl_len > 0:
+            self._recv_buffer.extend(next_seg.payload)
+            #rwin_bytes = self._rcv_wnd * self._mss
+            rwin_bytes = self._rcv_wnd
+            buf_len = len(self._recv_buffer)
+            if rwin_bytes > buf_len:
+                #self._rcv_wnd = (rwin_bytes - buf_len) // self._mss
+                self._rcv_wnd = rwin_bytes - buf_len
+            else:
+                self._rcv_wnd = 0
 
-            if self.state == self.SYN_RECEIVED:
-                self.remote_ip = packet.src_addr
+        if self.state == self.SYN_RECEIVED:
+            self.remote_ip = packet.src_addr
 
-            self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
-            # SYN and FIN flag are treated as one virtual byte
-            if next_seg.syn == 1 or next_seg.fin == 1:
-                self._rcv_next = tools.mod32(self._rcv_next + 1)
+        self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
+        # SYN and FIN flag are treated as one virtual byte
+        if next_seg.syn == 1 or next_seg.fin == 1:
+            self._rcv_next = tools.mod32(self._rcv_next + 1)
 
-            # advance self._una and check retransmission queue
-            if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
-                self._snd_una = next_seg.ack_nr
+        # advance self._una and check retransmission queue
+        if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
+            self._snd_una = next_seg.ack_nr
 
-            # update remote receive window, if necessary
-            if self._rem_rwnd != next_seg.window:
-                self._rem_rwnd = next_seg.window
+        # update remote receive window, if necessary
+        if self._rem_rwnd != next_seg.window:
+            self._rem_rwnd = next_seg.window
 
-            if self.debug:
-                tools.print_rgb(
-                        '\n<{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
-                            next_seg.length,
-                            next_seg.seq_nr,
-                            next_seg.ack_nr) + \
-                            '--RWND-{:-<8}--FLAGS-{:-<16}'.format(
-                            next_seg.window,
-                            next_seg.get_flag_str()),
-                        rgb=(150, 150, 255), bold=True)
-                tools.print_rgb('\tsegment categories: [{}]'.format(
-                        self.__get_cat_str(seg_cat)),
-                        rgb=(75, 75, 127), bold=True)
+        if self.debug:
+            tools.print_rgb(
+                    '\n<{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
+                        next_seg.length,
+                        next_seg.seq_nr,
+                        next_seg.ack_nr) + \
+                        '--RWND-{:-<8}--FLAGS-{:-<16}'.format(
+                        next_seg.window,
+                        next_seg.get_flag_str()),
+                    rgb=(150, 150, 255), bold=True)
+            tools.print_rgb('\tsegment categories: [{}]'.format(
+                    self.__get_cat_str(seg_cat)),
+                    rgb=(75, 75, 127), bold=True)
 
-            # only acknowledge if segment is not a pure ACK and not a reset
-            if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
-                self.__send_ack()
-            if seg_cat & self.SEG_ACK:
-                # ACK received
-                if (self._snd_wnd << 1) <= self._ssthresh:
-                    # Slow Start
-                    self._snd_wnd <<= 1
-                    if self.debug:
-                        tools.print_rgb(
-                                '\tincreased cwnd to {} segments'.format(
-                                    self._snd_wnd), rgb=(127, 127, 127))
-                elif (self._snd_wnd + 1) * self._mss < self._max_rwin:
-                    # Congestion Avoidance
-                    self._snd_wnd += 1
-                    if self.debug:
-                        tools.print_rgb(
-                                '\tincreased cwnd to {} segments'.format(
-                                    self._snd_wnd), rgb=(127, 127, 127))
-            return next_seg
-        return None
+        # only acknowledge if segment is not a pure ACK and not a reset
+        if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
+            self.__send_ack()
+        if seg_cat & self.SEG_ACK:
+            # ACK received
+            if (self._snd_wnd << 1) <= self._ssthresh:
+                # Slow Start
+                self._snd_wnd <<= 1
+                if self.debug:
+                    tools.print_rgb(
+                            '\tincreased cwnd to {} segments'.format(
+                                self._snd_wnd), rgb=(127, 127, 127))
+            elif (self._snd_wnd + 1) * self._mss < self._max_rwin:
+                # Congestion Avoidance
+                self._snd_wnd += 1
+                if self.debug:
+                    tools.print_rgb(
+                            '\tincreased cwnd to {} segments'.format(
+                                self._snd_wnd), rgb=(127, 127, 127))
+        return next_seg
+    return None
 
 
     def _is_in_rcv_seq_space(self, segment: TCPSegment):
