@@ -1559,12 +1559,11 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         remove acknowledged segments from rtx_queue
         '''
-        index = 0
+        unacknowledged = []
         for rtx_entry in self._rtx_queue:
             if tools.tcp_sn_gt(self._snd_una, tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length - 1)):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
-                self._rtx_queue.remove(self._rtx_queue[index])
                 if self.debug:
                     tools.print_rgb(
                             '\tremoving segment from retransmission queue',
@@ -1575,6 +1574,7 @@ class TCPHandler(ipv4.IPv4Handler):
                         self._snd_una), rgb=(127, 127, 127))
                     tools.print_rgb('\t\t{} segments in queue'.format(
                         len(self._rtx_queue)), rgb=(127, 127, 127))
+                continue
             elif tools.tcp_sn_gt(self._snd_una,
                     rtx_entry['segment'].seq_nr):
                 pl_slice = rtx_entry['segment'].payload[self._snd_una:]
@@ -1592,9 +1592,8 @@ class TCPHandler(ipv4.IPv4Handler):
                         self._snd_una,
                         rtx_entry['segment'].seq_nr,
                         rtx_entry['segment'].length), rgb=(255, 0, 0))
-                index += 1
-            else:
-                index += 1
+            unacknowledged.append(rtx_entry)
+        self._rtx_queue = unacknowledged
 
 
     def __process_rtx_queue(self, dont_frag=True):
@@ -1779,11 +1778,9 @@ class TCPHandler(ipv4.IPv4Handler):
         pl_len = next_seg.length
         if pl_len > 0:
             self._recv_buffer.extend(next_seg.payload)
-            #rwin_bytes = self._rcv_wnd * self._mss
             rwin_bytes = self._rcv_wnd
             buf_len = len(self._recv_buffer)
             if rwin_bytes > buf_len:
-                #self._rcv_wnd = (rwin_bytes - buf_len) // self._mss
                 self._rcv_wnd = rwin_bytes - buf_len
             else:
                 self._rcv_wnd = 0
