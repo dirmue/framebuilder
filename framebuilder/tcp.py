@@ -1223,12 +1223,6 @@ class TCPHandler(ipv4.IPv4Handler):
             # effective send window
             if eff_snd_wnd == 0 and self.debug:
                 tools.print_rgb('\t\t\t! Zero Window !', rgb=(255, 50, 50))
-            print(f'snd_nxt {self._snd_nxt}')
-            print(f'una {self._snd_una + eff_snd_wnd}')
-            print(f'eff_swnd {eff_snd_wnd}')
-            print(f'snd_wnd {self._snd_wnd}')
-            print(f'len sbuf {self._send_buffer.qsize()}')
-            print(f'len rtxq {len(self._rtx_queue)}')
             while tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
                             and not self._send_buffer.empty() \
