@@ -1853,14 +1853,14 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if seg_cat & self.SEG_ACK:
             # ACK received
-            if (self._snd_wnd + 1) <= self._ssthresh:
+            if self._snd_wnd < self._ssthresh:
                 # Slow Start
                 self._snd_wnd += 1
                 if self.debug:
                     tools.print_rgb(
                             '\tincreased cwnd to {} segments'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
-            elif (self._snd_wnd + 1) * self._mss <= self._ssthresh:
+            elif self._snd_wnd * self._mss < self._rem_rwnd:
                 # Congestion Avoidance
                 if len(self._rtx_queue) == 0:
                     self._snd_wnd += 1
