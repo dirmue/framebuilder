@@ -1314,8 +1314,8 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
         ### debug ###
-        self.send_cnt += 1
-        print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
+        #self.send_cnt += 1
+        #print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
         return self.send_segment(answer)
 
 
@@ -1640,7 +1640,7 @@ class TCPHandler(ipv4.IPv4Handler):
                         '\tretransmission timeout exceeded, resending segment',
                         rgb=(255, 50, 50), bold=True)
                     tools.print_rgb(
-                        '\t\tSEQNR {} ACKNR {} WAITT {} ns RTO {} ns'.format(
+                            '\t\tSEQNR {} ACKNR {} WAITT {} ns RTO {} ns'.format(
                             rtx_entry['segment'].seq_nr,
                             rtx_entry['segment'].ack_nr,
                             curr_time - rtx_entry['time'],
@@ -1649,9 +1649,9 @@ class TCPHandler(ipv4.IPv4Handler):
                         '\t\tset SND_WND {} SSTHRESH {}'.format(
                             self._snd_wnd, self._ssthresh), 
                         rgb=(150, 50, 50), bold=True)
-                if rtx_entry['delay'] > 8:
-                    self.abort()
-                    break
+                #if rtx_entry['delay'] > 8:
+                #    self.abort()
+                #    break
                 #rtx_entry['time'] = curr_time
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
@@ -1686,8 +1686,8 @@ class TCPHandler(ipv4.IPv4Handler):
                         segment.window,
                         segment.get_flag_str()), rgb=(50, 255, 50), bold=True)
         ### debug ###
-        self.send_cnt += 1
-        print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
+        #self.send_cnt += 1
+        #print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1809,8 +1809,8 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         ### debug ###
-        self.recv_cnt += 1
-        print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
+        #self.recv_cnt += 1
+        #print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
 
         # update receive window size
         pl_len = next_seg.length
