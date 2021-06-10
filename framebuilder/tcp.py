@@ -1297,26 +1297,31 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Send acknowledgement
         '''
-        answer = TCPSegment()
-        answer.ack = 1
-        if not self._send_buffer.empty():
-            answer.payload = self._send_buffer.get()
-        if self.state == self.CLOSE_WAIT \
-                and len(self._recv_buffer) == 0: #????
-            answer.fin = 1
-            self.state = self.LAST_ACK
-        if self.state == self.SYN_RECEIVED:
-            answer.syn = 1
-            answer.add_tcp_mss_option(self._mss)
-        answer.src_port = self.local_port
-        answer.dst_port = self.remote_port
-        answer.window = self._rcv_wnd
-        answer.seq_nr = self._snd_nxt
-        answer.ack_nr = self._rcv_next
-        ### debug ###
-        #self.send_cnt += 1
-        #print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
-        return self.send_segment(answer)
+        while tools.tcp_sn_lt(self._snd_nxt,
+                tools.mod32(self._snd_una + eff_snd_wnd)) \
+                        and eff_snd_wnd > 0 \
+                        and len(self._rtx_queue) <= self._snd_wnd \
+                        and self.state != self.CLOSED:
+            answer = TCPSegment()
+            answer.ack = 1
+            if not self._send_buffer.empty():
+                answer.payload = self._send_buffer.get()
+            if self.state == self.CLOSE_WAIT \
+                    and len(self._recv_buffer) == 0: #????
+                answer.fin = 1
+                self.state = self.LAST_ACK
+            if self.state == self.SYN_RECEIVED:
+                answer.syn = 1
+                answer.add_tcp_mss_option(self._mss)
+            answer.src_port = self.local_port
+            answer.dst_port = self.remote_port
+            answer.window = self._rcv_wnd
+            answer.seq_nr = self._snd_nxt
+            answer.ack_nr = self._rcv_next
+            ### debug ###
+            #self.send_cnt += 1
+            #print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
+            self.send_segment(answer)
 
 
     def __recv_listen(self, segment: TCPSegment):
@@ -1629,7 +1634,6 @@ class TCPHandler(ipv4.IPv4Handler):
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
                     < curr_time:
                 # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
-                self._rto <<= 1
                 if self._snd_wnd > 1:
                     self._ssthresh = self._snd_wnd // 2
                 self._snd_wnd = 1
