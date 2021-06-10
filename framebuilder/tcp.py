@@ -1223,12 +1223,12 @@ class TCPHandler(ipv4.IPv4Handler):
             # effective send window
             if eff_snd_wnd == 0 and self.debug:
                 tools.print_rgb('\t\t\t! Zero Window !', rgb=(255, 50, 50))
-            #print(f'snd_nxt {self._snd_nxt}')
-            #print(f'una {self._snd_una + eff_snd_wnd}')
-            #print(f'eff_swnd {eff_snd_wnd}')
-            #print(f'snd_wnd {self._snd_wnd}')
-            #print(f'len sbuf {self._send_buffer.qsize()}')
-            #print(f'len rtxq {len(self._rtx_queue)}')
+            print(f'snd_nxt {self._snd_nxt}')
+            print(f'una {self._snd_una + eff_snd_wnd}')
+            print(f'eff_swnd {eff_snd_wnd}')
+            print(f'snd_wnd {self._snd_wnd}')
+            print(f'len sbuf {self._send_buffer.qsize()}')
+            print(f'len rtxq {len(self._rtx_queue)}')
             while tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
                             and not self._send_buffer.empty() \
@@ -1297,32 +1297,26 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Send acknowledgement
         '''
-        eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
-        while tools.tcp_sn_lt(self._snd_nxt,
-                tools.mod32(self._snd_una + eff_snd_wnd)) \
-                        and eff_snd_wnd > 0 \
-                        and len(self._rtx_queue) <= self._snd_wnd \
-                        and self.state != self.CLOSED:
-            answer = TCPSegment()
-            answer.ack = 1
-            if not self._send_buffer.empty():
-                answer.payload = self._send_buffer.get()
-            if self.state == self.CLOSE_WAIT \
-                    and len(self._recv_buffer) == 0: #????
-                answer.fin = 1
-                self.state = self.LAST_ACK
-            if self.state == self.SYN_RECEIVED:
-                answer.syn = 1
-                answer.add_tcp_mss_option(self._mss)
-            answer.src_port = self.local_port
-            answer.dst_port = self.remote_port
-            answer.window = self._rcv_wnd
-            answer.seq_nr = self._snd_nxt
-            answer.ack_nr = self._rcv_next
-            ### debug ###
-            #self.send_cnt += 1
-            #print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
-            self.send_segment(answer)
+        answer = TCPSegment()
+        answer.ack = 1
+        if not self._send_buffer.empty():
+            answer.payload = self._send_buffer.get()
+        if self.state == self.CLOSE_WAIT \
+                and len(self._recv_buffer) == 0: #????
+            answer.fin = 1
+            self.state = self.LAST_ACK
+        if self.state == self.SYN_RECEIVED:
+            answer.syn = 1
+            answer.add_tcp_mss_option(self._mss)
+        answer.src_port = self.local_port
+        answer.dst_port = self.remote_port
+        answer.window = self._rcv_wnd
+        answer.seq_nr = self._snd_nxt
+        answer.ack_nr = self._rcv_next
+        ### debug ###
+        self.send_cnt += 1
+        print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
+        return self.send_segment(answer)
 
 
     def __recv_listen(self, segment: TCPSegment):
@@ -1687,8 +1681,8 @@ class TCPHandler(ipv4.IPv4Handler):
                         segment.window,
                         segment.get_flag_str()), rgb=(50, 255, 50), bold=True)
         ### debug ###
-        #self.send_cnt += 1
-        #print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
+        self.send_cnt += 1
+        print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1810,8 +1804,8 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         ### debug ###
-        #self.recv_cnt += 1
-        #print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
+        self.recv_cnt += 1
+        print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
 
         # update receive window size
         pl_len = next_seg.length
