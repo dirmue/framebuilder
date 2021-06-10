@@ -1223,7 +1223,7 @@ class TCPHandler(ipv4.IPv4Handler):
             # effective send window
             if eff_snd_wnd == 0 and self.debug:
                 tools.print_rgb('\t\t\t! Zero Window !', rgb=(255, 50, 50))
-            while tools.tcp_sn_lt(self._snd_nxt,
+            if tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
                             and not self._send_buffer.empty() \
                             and eff_snd_wnd > 0 \
@@ -1619,12 +1619,14 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         # resend timed out segments
         curr_time = time_ns()
+        timeout = False
         for rtx_entry in self._rtx_queue:
-            if rtx_entry['time'] + (self._rto << rtx_entry['delay']) > curr_time:
+            if rtx_entry['time'] + (self._rto << rtx_entry['delay']) < curr_time:
                 # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
-                if self._snd_wnd > 1:
-                    self._ssthresh = self._snd_wnd // 2
-                self._snd_wnd = 1
+                if not timeout:
+                    if self._snd_wnd > 1:
+                        self._ssthresh = self._snd_wnd // 2
+                    self._snd_wnd = 1
                 if self.debug:
                     tools.print_rgb(
                         '\tretransmission timeout exceeded, resending segment',
@@ -1639,12 +1641,14 @@ class TCPHandler(ipv4.IPv4Handler):
                         '\t\tset SND_WND {} SSTHRESH {}'.format(
                             self._snd_wnd, self._ssthresh), 
                         rgb=(150, 50, 50), bold=True)
-                if rtx_entry['delay'] > 8:
+                if rtx_entry['delay'] > 6:
                     self.abort()
                     break
                 rtx_entry['time'] = curr_time
-                rtx_entry['delay'] += 1
-                super().send(rtx_entry['segment'], dont_frag)
+                if not timeout:
+                    rtx_entry['delay'] += 1
+                    super().send(rtx_entry['segment'], dont_frag)
+                    timeout = True
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1849,7 +1853,7 @@ class TCPHandler(ipv4.IPv4Handler):
             # ACK received
             if self._snd_wnd < self._ssthresh:
                 # Slow Start
-                self._snd_wnd += 1
+                self._snd_wnd <<= 1
                 if self.debug:
                     tools.print_rgb(
                             '\tincreased cwnd to {} segments'.format(
