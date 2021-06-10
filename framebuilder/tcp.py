@@ -956,7 +956,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._rtx_queue = []
 
         # initial retransmission timeout 1s
-        self._rto = 10**9
+        self._rto = 30**9
 
         self._send_buffer = queue.Queue()
         self._recv_buffer = bytearray()
@@ -1022,6 +1022,10 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # rtt variance
         self._rttvar = None
+
+        # debug
+        self.send_cnt = 0
+        self.recv_cnt = 0
 
 
     def __del__(self):
@@ -1211,13 +1215,20 @@ class TCPHandler(ipv4.IPv4Handler):
             index += self._mss
 
         count = 0
+        empty = 0
+        eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
         while ((not self._send_buffer.empty()) or len(self._rtx_queue) > 0) \
                 and self.state != self.CLOSED:
             # choose the lower of send window or remote receive window as
             # effective send window
-            eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
             if eff_snd_wnd == 0 and self.debug:
                 tools.print_rgb('\t\t\t! Zero Window !', rgb=(255, 50, 50))
+            #print(f'snd_nxt {self._snd_nxt}')
+            #print(f'una {self._snd_una + eff_snd_wnd}')
+            #print(f'eff_swnd {eff_snd_wnd}')
+            #print(f'snd_wnd {self._snd_wnd}')
+            #print(f'len sbuf {self._send_buffer.qsize()}')
+            #print(f'len rtxq {len(self._rtx_queue)}')
             while tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
                             and not self._send_buffer.empty() \
@@ -1237,10 +1248,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.send_segment(segment)
             ack = self.receive_segment()
             if ack is not None:
-                self.__process_rtx_queue()
-            else:
-                print(f'outer recieve {count}')
-            count += 1
+                eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
+                self.__clean_rtx_queue()
+            self.__process_rtx_queue()
+
 
     def close(self):
         '''
@@ -1302,6 +1313,9 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.window = self._rcv_wnd
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
+        ### debug ###
+        self.send_cnt += 1
+        print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
         return self.send_segment(answer)
 
 
@@ -1562,8 +1576,13 @@ class TCPHandler(ipv4.IPv4Handler):
         remove acknowledged segments from rtx_queue
         '''
         unacknowledged = []
+        if self.debug:
+            tools.print_rgb('\tprocessing rtx...', rgb=(127, 127, 127))
         for rtx_entry in self._rtx_queue:
-            if tools.tcp_sn_gt(self._snd_una, tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length - 1)):
+            if tools.tcp_sn_gt(
+                    self._snd_una, 
+                    tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length - 1)
+                    ):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
                 if self.debug:
@@ -1574,8 +1593,6 @@ class TCPHandler(ipv4.IPv4Handler):
                         rtx_entry['segment'].seq_nr,
                         rtx_entry['segment'].ack_nr,
                         self._snd_una), rgb=(127, 127, 127))
-                    tools.print_rgb('\t\t{} segments in queue'.format(
-                        len(self._rtx_queue)), rgb=(127, 127, 127))
                 continue
             elif tools.tcp_sn_gt(self._snd_una,
                     rtx_entry['segment'].seq_nr):
@@ -1596,19 +1613,26 @@ class TCPHandler(ipv4.IPv4Handler):
                         rtx_entry['segment'].length), rgb=(255, 0, 0))
             unacknowledged.append(rtx_entry)
         self._rtx_queue = unacknowledged
+        if self.debug:
+            tools.print_rgb('\t...done -> ', rgb=(127, 127, 127), end='')
+            tools.print_rgb('{} segments in queue'.format(
+                len(self._rtx_queue)), rgb=(127, 127, 127), bold=True)
 
 
     def __process_rtx_queue(self, dont_frag=True):
         '''
         resend unacknowledged segments if rto is exceeded
         '''
-        self.__clean_rtx_queue()
         # resend timed out segments
+        curr_time = time_ns()
         for rtx_entry in self._rtx_queue:
-            curr_time = time_ns()
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
                     < curr_time:
-                # Timeout! Set send window to 1 MSS and divide ssthresh by 2
+                # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
+                self._rto <<= 1
+                if self._snd_wnd > 1:
+                    self._ssthresh = self._snd_wnd // 2
+                self._snd_wnd = 1
                 if self.debug:
                     tools.print_rgb(
                         '\tretransmission timeout exceeded, resending segment',
@@ -1619,9 +1643,10 @@ class TCPHandler(ipv4.IPv4Handler):
                             rtx_entry['segment'].ack_nr,
                             curr_time - rtx_entry['time'],
                             self._rto), rgb=(255, 50, 50))
-                if self._ssthresh > 1:
-                    self._ssthresh = self._ssthresh // 2
-                self._snd_wnd = 1
+                    tools.print_rgb(
+                        '\t\tset SND_WND {} SSTHRESH {}'.format(
+                            self._snd_wnd, self._ssthresh), 
+                        rgb=(150, 50, 50), bold=True)
                 if rtx_entry['delay'] > 8:
                     self.abort()
                     break
@@ -1656,6 +1681,9 @@ class TCPHandler(ipv4.IPv4Handler):
                         '--RWND-{:-<8}--FLAGS-{:-<15}> '.format(
                         segment.window,
                         segment.get_flag_str()), rgb=(50, 255, 50), bold=True)
+        ### debug ###
+        self.send_cnt += 1
+        print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1776,6 +1804,10 @@ class TCPHandler(ipv4.IPv4Handler):
         if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_next):
             return None
 
+        ### debug ###
+        self.recv_cnt += 1
+        print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
+
         # update receive window size
         pl_len = next_seg.length
         if pl_len > 0:
@@ -1820,22 +1852,24 @@ class TCPHandler(ipv4.IPv4Handler):
         # only acknowledge if segment is not a pure ACK and not a reset
         if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
             self.__send_ack()
+
         if seg_cat & self.SEG_ACK:
             # ACK received
-            if (self._snd_wnd << 1) <= self._ssthresh:
+            if (self._snd_wnd + 1) <= self._ssthresh:
                 # Slow Start
-                self._snd_wnd <<= 1
-                if self.debug:
-                    tools.print_rgb(
-                            '\tincreased cwnd to {} segments'.format(
-                                self._snd_wnd), rgb=(127, 127, 127))
-            elif (self._snd_wnd + 1) * self._mss:
-                # Congestion Avoidance
                 self._snd_wnd += 1
                 if self.debug:
                     tools.print_rgb(
                             '\tincreased cwnd to {} segments'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
+            elif (self._snd_wnd + 1) * self._mss <= self._ssthresh:
+                # Congestion Avoidance
+                if len(self._rtx_queue) == 0:
+                    self._snd_wnd += 1
+                    if self.debug:
+                        tools.print_rgb(
+                                '\tincreased cwnd to {} segments'.format(
+                                    self._snd_wnd), rgb=(127, 127, 127))
         return next_seg
 
 
