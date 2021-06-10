@@ -1314,8 +1314,8 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
         ### debug ###
-        self.send_cnt += 1
-        print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
+        #self.send_cnt += 1
+        #print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
         return self.send_segment(answer)
 
 
@@ -1682,8 +1682,8 @@ class TCPHandler(ipv4.IPv4Handler):
                         segment.window,
                         segment.get_flag_str()), rgb=(50, 255, 50), bold=True)
         ### debug ###
-        self.send_cnt += 1
-        print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
+        #self.send_cnt += 1
+        #print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1805,8 +1805,8 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         ### debug ###
-        self.recv_cnt += 1
-        print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
+        #self.recv_cnt += 1
+        #print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
 
         # update receive window size
         pl_len = next_seg.length
@@ -1870,6 +1870,8 @@ class TCPHandler(ipv4.IPv4Handler):
                         tools.print_rgb(
                                 '\tincreased cwnd to {} segments'.format(
                                     self._snd_wnd), rgb=(127, 127, 127))
+            ### debug ###
+            print(f'ssthresh: {self._ssthresh} cwin: {self._snd_wnd} rem_rwin: {self._rem_rwnd}')
         return next_seg
 
 
