@@ -1620,7 +1620,7 @@ class TCPHandler(ipv4.IPv4Handler):
         # resend timed out segments
         curr_time = time_ns()
         for rtx_entry in self._rtx_queue:
-            if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
+            if rtx_entry['time'] + (self._rto << rtx_entry['delay']) > curr_time:
                 # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
                 if self._snd_wnd > 1:
                     self._ssthresh = self._snd_wnd // 2
