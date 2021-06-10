@@ -1297,6 +1297,7 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Send acknowledgement
         '''
+        eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
         while tools.tcp_sn_lt(self._snd_nxt,
                 tools.mod32(self._snd_una + eff_snd_wnd)) \
                         and eff_snd_wnd > 0 \
