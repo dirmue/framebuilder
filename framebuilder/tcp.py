@@ -1619,13 +1619,9 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         # resend timed out segments
         curr_time = time_ns()
-        timeout = False
         for rtx_entry in self._rtx_queue:
-            #if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
-            if rtx_entry['time'] + self._rto < curr_time:
+            if rtx_entry['time'] + (self._rto << rtx_entry['delay']) \
                 # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
-                timeout = True
-                self._rto <<= 1
                 if self._snd_wnd > 1:
                     self._ssthresh = self._snd_wnd // 2
                 self._snd_wnd = 1
@@ -1643,14 +1639,12 @@ class TCPHandler(ipv4.IPv4Handler):
                         '\t\tset SND_WND {} SSTHRESH {}'.format(
                             self._snd_wnd, self._ssthresh), 
                         rgb=(150, 50, 50), bold=True)
-                #if rtx_entry['delay'] > 8:
-                #    self.abort()
-                #    break
-                #rtx_entry['time'] = curr_time
+                if rtx_entry['delay'] > 8:
+                    self.abort()
+                    break
+                rtx_entry['time'] = curr_time
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
-                if timeout:
-                    break
 
 
     def send_segment(self, segment, dont_frag=True):
