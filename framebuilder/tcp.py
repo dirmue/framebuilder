@@ -1862,12 +1862,11 @@ class TCPHandler(ipv4.IPv4Handler):
                                 self._snd_wnd), rgb=(127, 127, 127))
             elif self._snd_wnd * self._mss < self._rem_rwnd:
                 # Congestion Avoidance
-                if len(self._rtx_queue) == 0:
-                    self._snd_wnd += 1
-                    if self.debug:
-                        tools.print_rgb(
-                                '\tincreased cwnd to {} segments'.format(
-                                    self._snd_wnd), rgb=(127, 127, 127))
+                self._snd_wnd += 1
+                if self.debug:
+                    tools.print_rgb(
+                            '\tincreased cwnd to {} segments'.format(
+                                self._snd_wnd), rgb=(127, 127, 127))
             ### debug ###
             print(f'ssthresh: {self._ssthresh} cwin: {self._snd_wnd} rem_rwin: {self._rem_rwnd}')
         return next_seg
