@@ -1630,8 +1630,7 @@ class TCPHandler(ipv4.IPv4Handler):
             for rtx_entry in self._rtx_queue:
                 self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
                 self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
-                #super().send(rtx_entry['segment'], dont_frag)
-                self.send_segment(rtx_entry['segment'], dont_frag)
+                super().send(rtx_entry['segment'], dont_frag)
 
         # resend timed out segments
         curr_time = time_ns()
@@ -1665,8 +1664,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 rtx_entry['time'] = curr_time
                 if not timeout:
                     rtx_entry['delay'] += 1
-                    #super().send(rtx_entry['segment'], dont_frag)
-                    self.send_segment(rtx_entry['segment'], dont_frag)
+                    super().send(rtx_entry['segment'], dont_frag)
                     timeout = True
 
 
