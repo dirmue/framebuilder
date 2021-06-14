@@ -1878,7 +1878,7 @@ class TCPHandler(ipv4.IPv4Handler):
             ### debug ###
             print(f'ssthresh: {self._ssthresh} cwin: {self._snd_wnd} rem_rwin: {self._rem_rwnd}')
         
-        if seg_cat & self.SEG_DUP_ACK):
+        if seg_cat & self.SEG_DUP_ACK:
             self._dup_ack_cnt += 1
             if self._dup_ack_cnt > 2:
                 # Fast Recovery
