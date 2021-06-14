@@ -955,6 +955,9 @@ class TCPHandler(ipv4.IPv4Handler):
         # }, ...]
         self._rtx_queue = []
 
+        # bytes in flight
+        self._in_flight
+
         # initial retransmission timeout 1s
         self._rto = 30**9
 
@@ -1009,10 +1012,10 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # send window size (multiply by MSS)
         # let's start with 1 segment
-        self._snd_wnd = 1
+        self._snd_wnd = self._mss
 
-        # slow start threshold (multiply by MSS)
-        self._ssthresh = 20
+        # slow start threshold
+        self._ssthresh = 65535 << 8
 
         # round trip time
         self._rtt = None
@@ -1022,6 +1025,9 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # rtt variance
         self._rttvar = None
+
+        # duplicate ACK counter
+        self._dup_ack_cnt = 0
 
         # debug
         self.send_cnt = 0
@@ -1216,7 +1222,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         count = 0
         empty = 0
-        eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
+        eff_snd_wnd = min(self._snd_wnd, self._rem_rwnd)
         while ((not self._send_buffer.empty()) or len(self._rtx_queue) > 0) \
                 and self.state != self.CLOSED:
             # choose the lower of send window or remote receive window as
@@ -1227,7 +1233,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
                             and not self._send_buffer.empty() \
                             and eff_snd_wnd > 0 \
-                            and len(self._rtx_queue) <= self._snd_wnd \
+                            and self._in_flight <= self._snd_wnd \
                             and self.state != self.CLOSED:
                 segment = TCPSegment()
                 segment.payload = self._send_buffer.get()
@@ -1239,10 +1245,11 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.seq_nr = self._snd_nxt
                 segment.ack_nr = self._rcv_next
                 segment.window = self._rcv_wnd
+                self._in_flight = segment.length
                 self.send_segment(segment)
             ack = self.receive_segment()
             if ack is not None:
-                eff_snd_wnd = min(self._snd_wnd * self._mss, self._rem_rwnd)
+                eff_snd_wnd = min(self._snd_wnd, self._rem_rwnd)
                 self.__clean_rtx_queue()
             self.__process_rtx_queue()
 
@@ -1330,6 +1337,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if seg_mss is not None:
                 if seg_mss < self._mss:
                     self._mss = seg_mss
+                    self._snd_wnd = seg_mss
             else:
                 self._mss = 536
             self._irs = segment.seq_nr
@@ -1596,7 +1604,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     self.__calc_rto(time_ns() - rtx_entry['time'])
                 if self.debug:
                     tools.print_rgb(
-                            '\tcutting segment payload in retransmission queue',
+                            '\ttruncating segment payload in retransmission queue',
                             rgb=(127, 100, 100))
                     tools.print_rgb('\t\tSEQNR {} ACKNR {}'.format(
                         rtx_entry['segment'].seq_nr,
@@ -1624,9 +1632,9 @@ class TCPHandler(ipv4.IPv4Handler):
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) < curr_time:
                 # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
                 if not timeout:
-                    if self._snd_wnd > 1:
+                    if self._snd_wnd >= self._mss * 2:
                         self._ssthresh = self._snd_wnd // 2
-                    self._snd_wnd = 1
+                    self._snd_wnd = self._mss
                 if self.debug:
                     tools.print_rgb(
                         '\tretransmission timeout exceeded, resending segment',
@@ -1853,14 +1861,14 @@ class TCPHandler(ipv4.IPv4Handler):
             # ACK received
             if self._snd_wnd < self._ssthresh:
                 # Slow Start
-                self._snd_wnd <<= 1
+                self._snd_wnd += self._mss
                 if self.debug:
                     tools.print_rgb(
                             '\tincreased cwnd to {} segments'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
-            elif self._snd_wnd * self._mss < self._rem_rwnd:
+            else:
                 # Congestion Avoidance
-                self._snd_wnd += 1
+                self._snd_wnd += self._mss * self._mss // self._snd_wnd
                 if self.debug:
                     tools.print_rgb(
                             '\tincreased cwnd to {} segments'.format(
