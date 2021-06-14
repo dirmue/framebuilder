@@ -1010,8 +1010,7 @@ class TCPHandler(ipv4.IPv4Handler):
         # remote receive window
         self._rem_rwnd = 0
 
-        # send window size (multiply by MSS)
-        # let's start with 1 segment
+        # send window size (start with 1 MSS)
         self._snd_wnd = self._mss
 
         # slow start threshold
@@ -1222,18 +1221,18 @@ class TCPHandler(ipv4.IPv4Handler):
 
         count = 0
         empty = 0
-        eff_snd_wnd = min(self._snd_wnd, self._rem_rwnd)
+        # choose the lower of send window or remote receive window as
+        # effective send window
+        eff_snd_wnd = min(self._snd_wnd - self._in_flight, self._rem_rwnd)
         while ((not self._send_buffer.empty()) or len(self._rtx_queue) > 0) \
                 and self.state != self.CLOSED:
-            # choose the lower of send window or remote receive window as
-            # effective send window
             if eff_snd_wnd == 0 and self.debug:
                 tools.print_rgb('\t\t\t! Zero Window !', rgb=(255, 50, 50))
             if tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)) \
                             and not self._send_buffer.empty() \
                             and eff_snd_wnd > 0 \
-                            and self._in_flight <= self._snd_wnd \
+                            and self._in_flight <= self._rem_rwnd \
                             and self.state != self.CLOSED:
                 segment = TCPSegment()
                 segment.payload = self._send_buffer.get()
@@ -1249,7 +1248,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.send_segment(segment)
             ack = self.receive_segment()
             if ack is not None:
-                eff_snd_wnd = min(self._snd_wnd, self._rem_rwnd)
+                eff_snd_wnd = min(self._snd_wnd - self._in_flight, self._rem_rwnd)
                 self.__clean_rtx_queue()
             self.__process_rtx_queue()
 
@@ -1587,6 +1586,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     ):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
+                self._in_flight -= rtx_entry['segment'].length
                 if self.debug:
                     tools.print_rgb(
                             '\tremoving segment from retransmission queue',
@@ -1599,6 +1599,7 @@ class TCPHandler(ipv4.IPv4Handler):
             elif tools.tcp_sn_gt(self._snd_una,
                     rtx_entry['segment'].seq_nr):
                 pl_slice = rtx_entry['segment'].payload[self._snd_una:]
+                self._in_flight -= rtx_entry['segment'].length - len(pl_slice)
                 rtx_entry['segment'].payload = pl_slice
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
@@ -1681,6 +1682,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.syn == 1 or segment.fin == 1:
             ack_len += 1
         if ack_len > 0:
+            self._in_flight += segment.length
             self._rtx_queue.append({'segment': segment,
                                     'time': time_ns(),
                                     'delay': 0})
@@ -1694,9 +1696,6 @@ class TCPHandler(ipv4.IPv4Handler):
                         '--RWND-{:-<8}--FLAGS-{:-<15}> '.format(
                         segment.window,
                         segment.get_flag_str()), rgb=(50, 255, 50), bold=True)
-        ### debug ###
-        #self.send_cnt += 1
-        #print(f'Segment #{self.send_cnt:>10} sent ({segment.seq_nr})')
         return super().send(segment, dont_frag) - segment.data_offset * 4
 
 
@@ -1817,10 +1816,6 @@ class TCPHandler(ipv4.IPv4Handler):
         if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_next):
             return None
 
-        ### debug ###
-        #self.recv_cnt += 1
-        #print(f'Segment #{self.recv_cnt:>10} received ({segment.seq_nr})')
-
         # update receive window size
         pl_len = next_seg.length
         if pl_len > 0:
@@ -1840,7 +1835,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if next_seg.syn == 1 or next_seg.fin == 1:
             self._rcv_next = tools.mod32(self._rcv_next + 1)
 
-        # advance self._una and check retransmission queue
+        # advance self._una if ack number is greater or equal UNA
         if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
             self._snd_una = next_seg.ack_nr
 
