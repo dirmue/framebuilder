@@ -1174,7 +1174,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 break
 
 
-    def receive(self, size=65535, pass_on_error=True):
+    def receive(self, size=32767, pass_on_error=True):
         '''
         Receive size bytes of data
         :param size: if less or equal 0 read everything
