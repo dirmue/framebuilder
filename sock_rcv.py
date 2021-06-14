@@ -12,6 +12,7 @@ start = time.time()
 while True:
     data = sock.recv(1412)
     if len(data) == 0:
+        sock.close()
         break
     print(data.decode('utf-8'), end='')
 print('\n---------------\ntransfer took', time.time() - start, 'seconds')
