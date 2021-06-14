@@ -1174,27 +1174,22 @@ class TCPHandler(ipv4.IPv4Handler):
                 break
 
 
-    def receive(self, size=0, pass_on_error=True):
+    def receive(self, size=65535, pass_on_error=True):
         '''
         Receive size bytes of data
         :param size: if less or equal 0 read everything
         '''
-        self.receive_segment(pass_on_error)
         result = b''
-        if size > 0:
-            if len(self._recv_buffer) >= size:
-                if self.debug:
-                    tools.print_rgb(f'state: {self.state} ', rgb=(255, 0, 0), end='')
-                    tools.print_rgb(f'una: {self._snd_una} ', rgb=(255, 0, 0), end='')
-                    tools.print_rgb(f'rcv_buf_len: {len(self._recv_buffer)} Bytes', rgb=(255, 0, 0), end='')
-                    tools.print_rgb(f's_nxt: {self._snd_nxt} ', rgb=(255, 0, 0), end='')
-                    tools.print_rgb(f'r_nxt: {self._rcv_next}', rgb=(255, 0, 0))
-                result = self._recv_buffer[:size]
-                self._recv_buffer = self._recv_buffer[size:]
+        while len(self._recv_buffer) < size:
+            self.receive_segment(pass_on_error)
+            if self.state == self.LAST_ACK:
+                break
+        result = self._recv_buffer[:size]
+        if self.state == self.CLOSE_WAIT:
+            self._recv_buffer = b''
         else:
-            result = copy.copy(self._recv_buffer)
-            self._recv_buffer.clear()
-        self._rcv_wnd = self._max_rwin - len(self._recv_buffer)
+            self._recv_buffer = self._recv_buffer[size:]
+            self._rcv_wnd = self._max_rwin - len(self._recv_buffer)
         return result
 
 
@@ -1301,8 +1296,8 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.ack = 1
         if not self._send_buffer.empty():
             answer.payload = self._send_buffer.get()
-        if self.state == self.CLOSE_WAIT \
-                and len(self._recv_buffer) == 0: #????
+        if self.state == self.CLOSE_WAIT:
+                #and len(self._recv_buffer) == 0: #????
             answer.fin = 1
             self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
@@ -1313,9 +1308,6 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.window = self._rcv_wnd
         answer.seq_nr = self._snd_nxt
         answer.ack_nr = self._rcv_next
-        ### debug ###
-        #self.send_cnt += 1
-        #print(f'Segment #{self.send_cnt:>10} sent ({answer.seq_nr})')
         return self.send_segment(answer)
 
 
