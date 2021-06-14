@@ -1630,10 +1630,12 @@ class TCPHandler(ipv4.IPv4Handler):
         timeout = False
         for rtx_entry in self._rtx_queue:
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) < curr_time:
-                # Timeout! Set send window to 1 MSS and ssthresh to 1/2 snd_wnd
+                # Timeout! RFC 2581: ssthresh = max (FlightSize / 2, 2*SMSS)
+                # Implementation Note: an easy mistake to make is to 
+                # simply use cwnd, rather than FlightSize, which in some 
+                # implementations may incidentally increase well beyond rwnd.
                 if not timeout:
-                    if self._snd_wnd >= self._mss * 2:
-                        self._ssthresh = self._snd_wnd // 2
+                    self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
                     self._snd_wnd = self._mss
                 if self.debug:
                     tools.print_rgb(
@@ -1857,24 +1859,30 @@ class TCPHandler(ipv4.IPv4Handler):
         if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
             self.__send_ack()
 
-        if seg_cat & self.SEG_ACK:
+        if seg_cat & self.SEG_ACK and not (seg_cat & self.SEG_DUP_ACK):
             # ACK received
             if self._snd_wnd < self._ssthresh:
                 # Slow Start
                 self._snd_wnd += self._mss
                 if self.debug:
                     tools.print_rgb(
-                            '\tincreased cwnd to {} segments'.format(
+                            '\tincreased cwnd to {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
             else:
                 # Congestion Avoidance
                 self._snd_wnd += self._mss * self._mss // self._snd_wnd
                 if self.debug:
                     tools.print_rgb(
-                            '\tincreased cwnd to {} segments'.format(
+                            '\tincreased cwnd to {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
             ### debug ###
             print(f'ssthresh: {self._ssthresh} cwin: {self._snd_wnd} rem_rwin: {self._rem_rwnd}')
+        
+        if seg_cat & self.SEG_DUP_ACK):
+            self._dup_ack_cnt += 1
+            if self._dup_ack_cnt > 2:
+                # Fast Recovery
+
         return next_seg
 
 
