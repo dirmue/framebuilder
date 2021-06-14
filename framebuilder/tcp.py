@@ -956,7 +956,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._rtx_queue = []
 
         # bytes in flight
-        self._in_flight
+        self._in_flight = 0
 
         # initial retransmission timeout 1s
         self._rto = 30**9
