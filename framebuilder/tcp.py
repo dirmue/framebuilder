@@ -1625,6 +1625,14 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         resend unacknowledged segments if rto is exceeded
         '''
+        if self._dup_ack_cnt > 2:
+            # Third duplicate ACK in a row --> Fast Retransmission
+            for rtx_entry in self._rtx_queue:
+                self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+                self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
+                #super().send(rtx_entry['segment'], dont_frag)
+                self.send_segment(rtx_entry['segment'], dont_frag)
+
         # resend timed out segments
         curr_time = time_ns()
         timeout = False
@@ -1657,7 +1665,8 @@ class TCPHandler(ipv4.IPv4Handler):
                 rtx_entry['time'] = curr_time
                 if not timeout:
                     rtx_entry['delay'] += 1
-                    super().send(rtx_entry['segment'], dont_frag)
+                    #super().send(rtx_entry['segment'], dont_frag)
+                    self.send_segment(rtx_entry['segment'], dont_frag)
                     timeout = True
 
 
@@ -1860,7 +1869,12 @@ class TCPHandler(ipv4.IPv4Handler):
             self.__send_ack()
 
         if seg_cat & self.SEG_ACK and not (seg_cat & self.SEG_DUP_ACK):
-            # ACK received
+            # ACK received            
+            if self._dup_ack_cnt > 0:
+                # Fast Recovery
+                self._dup_ack_cnt = 0
+                self._snd_wnd = self.ssthresh
+
             if self._snd_wnd < self._ssthresh:
                 # Slow Start
                 self._snd_wnd += self._mss
@@ -1880,8 +1894,6 @@ class TCPHandler(ipv4.IPv4Handler):
         
         if seg_cat & self.SEG_DUP_ACK:
             self._dup_ack_cnt += 1
-            if self._dup_ack_cnt > 2:
-                # Fast Recovery
 
         return next_seg
 
