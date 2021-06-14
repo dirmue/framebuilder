@@ -1187,9 +1187,9 @@ class TCPHandler(ipv4.IPv4Handler):
         result = self._recv_buffer[:size]
         if self.state == self.LAST_ACK:
             self._recv_buffer = b''
-        else:
-            self._recv_buffer = self._recv_buffer[size:]
-            print(len(self._recv_buffer))
+            return b''
+        self._recv_buffer = self._recv_buffer[size:]
+        print(len(self._recv_buffer))
             #self._rcv_wnd = self._max_rwin - len(self._recv_buffer)
         return result
 
