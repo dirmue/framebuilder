@@ -1866,7 +1866,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if self._dup_ack_cnt > 0:
                 # Fast Recovery
                 self._dup_ack_cnt = 0
-                self._snd_wnd = self.ssthresh
+                self._snd_wnd = self._ssthresh
 
             if self._snd_wnd < self._ssthresh:
                 # Slow Start
