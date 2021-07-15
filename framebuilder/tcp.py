@@ -974,7 +974,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._snd_nxt = self._iss
 
         # sequence number of next segment to be received
-        self._rcv_next = 0
+        self._rcv_nxt = 0
 
         # receive urgent pointer
         self._rcv_up = None
@@ -1052,7 +1052,7 @@ class TCPHandler(ipv4.IPv4Handler):
         print('LOCAL ADDR:', self.local_ip, self.local_port)
         print('REMOTE ADDR:', self.remote_ip, self.remote_port)
         print('ISN:', self._iss)
-        print('NEXT RCV SEQNR:', self._rcv_next)
+        print('NEXT RCV SEQNR:', self._rcv_nxt)
         print('RCV BUFFER LEN:', len(self._recv_buffer))
         print('NEXT SND SEQNR:', self._snd_nxt)
         print('UNACK:', self._snd_una)
@@ -1158,7 +1158,7 @@ class TCPHandler(ipv4.IPv4Handler):
         segment.src_port = self.local_port
         segment.dst_port = self.remote_port
         segment.seq_nr = self._snd_nxt
-        segment.ack_nr = self._rcv_next
+        segment.ack_nr = self._rcv_nxt
         segment.window = self._rcv_wnd
         segment.syn = 1
         segment.add_tcp_mss_option(self._mss)
@@ -1238,7 +1238,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 if self._send_buffer.empty():
                     segment.psh = 1
                 segment.seq_nr = self._snd_nxt
-                segment.ack_nr = self._rcv_next
+                segment.ack_nr = self._rcv_nxt
                 segment.window = self._rcv_wnd
                 self._in_flight = segment.length
                 self.send_segment(segment)
@@ -1262,7 +1262,7 @@ class TCPHandler(ipv4.IPv4Handler):
         segment.fin = 1
         segment.ack = 1
         segment.seq_nr = self._snd_nxt
-        segment.ack_nr = self._rcv_next
+        segment.ack_nr = self._rcv_nxt
         segment.window = self._rcv_wnd
         self.send_segment(segment)
         self.state = self.FIN_WAIT_1
@@ -1308,7 +1308,7 @@ class TCPHandler(ipv4.IPv4Handler):
         answer.dst_port = self.remote_port
         answer.window = self._rcv_wnd
         answer.seq_nr = self._snd_nxt
-        answer.ack_nr = self._rcv_next
+        answer.ack_nr = self._rcv_nxt
         return self.send_segment(answer)
 
 
@@ -1333,7 +1333,7 @@ class TCPHandler(ipv4.IPv4Handler):
             else:
                 self._mss = 536
             self._irs = segment.seq_nr
-            self._rcv_next = self._irs
+            self._rcv_nxt = self._irs
             self.remote_port = segment.src_port
             self.state = self.SYN_RECEIVED
             if self.debug:
@@ -1361,7 +1361,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 if seg_mss < self._mss:
                     self._mss = seg_mss
             self._irs = segment.seq_nr
-            self._rcv_next = self._irs
+            self._rcv_nxt = self._irs
             self.remote_port = segment.src_port
             self.state = self.ESTABLISHED
             if self.debug:
@@ -1740,7 +1740,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if seg_size == 0 \
                 and tools.tcp_sn_lt(segment.ack_nr, self._snd_una) \
                 and segment.window == self._rem_rwnd \
-                and self._rcv_next != 0 \
+                and self._rcv_nxt != 0 \
                 and self._snd_nxt != self._iss \
                 and result & self.SEG_SYN == 0 \
                 and result & self.SEG_FIN == 0 \
@@ -1767,7 +1767,6 @@ class TCPHandler(ipv4.IPv4Handler):
         :param pass_on_error: <bool> return None if non-blocking socket does
                                      not receive anything
         '''
-
         if self.state == self.CLOSED:
             # do not process any segments if connection is closed
             return None
@@ -1806,7 +1805,7 @@ class TCPHandler(ipv4.IPv4Handler):
         seg_cat = self.__categorize_segment(next_seg)
 
         # drop out of order segments
-        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_next):
+        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt):
             return None
 
         # update receive window size
@@ -1823,10 +1822,10 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.SYN_RECEIVED:
             self.remote_ip = packet.src_addr
 
-        self._rcv_next = tools.mod32(self._rcv_next + next_seg.length)
+        self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
         # SYN and FIN flag are treated as one virtual byte
         if next_seg.syn == 1 or next_seg.fin == 1:
-            self._rcv_next = tools.mod32(self._rcv_next + 1)
+            self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
 
         # advance self._una if ack number is greater or equal UNA
         if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
@@ -1875,8 +1874,8 @@ class TCPHandler(ipv4.IPv4Handler):
                     tools.print_rgb(
                             '\tincreased cwnd to {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
-            ### debug ###
-            print(f'ssthresh: {self._ssthresh} cwin: {self._snd_wnd} rem_rwin: {self._rem_rwnd}')
+            if self.debug:
+                print(f'ssthresh: {self._ssthresh} cwin: {self._snd_wnd} rem_rwin: {self._rem_rwnd}')
         
         if seg_cat & self.SEG_DUP_ACK:
             self._dup_ack_cnt += 1
@@ -1894,21 +1893,21 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if self._rcv_wnd == 0:
             if seg_length == 0:
-                return segment.seq_nr == self._rcv_next
+                return segment.seq_nr == self._rcv_nxt
             return False
         if seg_length == 0:
-            return (self._rcv_next == segment.seq_nr or \
-                    tools.tcp_sn_lt(self._rcv_next, segment.seq_nr)) and \
-                    tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
+            return (self._rcv_nxt == segment.seq_nr or \
+                    tools.tcp_sn_lt(self._rcv_nxt, segment.seq_nr)) and \
+                    tools.tcp_sn_gt(self._rcv_nxt + self._rcv_wnd,
                                     segment.seq_nr)
-        return (self._rcv_next == segment.seq_nr or \
-                tools.tcp_sn_lt(self._rcv_next, segment.seq_nr)) and \
-                tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
+        return (self._rcv_nxt == segment.seq_nr or \
+                tools.tcp_sn_lt(self._rcv_nxt, segment.seq_nr)) and \
+                tools.tcp_sn_gt(self._rcv_nxt + self._rcv_wnd,
                                 segment.seq_nr) or \
-               (self._rcv_next == segment.seq_nr + seg_length - 1 or \
-                tools.tcp_sn_lt(self._rcv_next,
+               (self._rcv_nxt == segment.seq_nr + seg_length - 1 or \
+                tools.tcp_sn_lt(self._rcv_nxt,
                                 segment.seq_nr + seg_length - 1)) and \
-                tools.tcp_sn_gt(self._rcv_next + self._rcv_wnd,
+                tools.tcp_sn_gt(self._rcv_nxt + self._rcv_wnd,
                                 segment.seq_nr + seg_length - 1)
 
 
