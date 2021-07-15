@@ -961,7 +961,7 @@ class TCPHandler(ipv4.IPv4Handler):
         # initial retransmission timeout 1s
         self._rto = 30**9
 
-        self._send_buffer = queue.Queue()
+        self._send_buffer = bytearray()
         self._recv_buffer = bytearray()
 
         # initial send sequence number
@@ -1207,35 +1207,45 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.remote_ip is None:
             raise err.InvalidIPv4AddrException('None')
 
-        index = 0
-        while True:
-            if index + self._mss > len(data):
-                self._send_buffer.put(data[index:])
-                break
-            self._send_buffer.put(data[index:index+self._mss])
-            index += self._mss
+        self._send_buffer.extend(data)
 
         count = 0
         empty = 0
         # choose the lower of send window or remote receive window as
         # effective send window
         eff_snd_wnd = min(self._snd_wnd - self._in_flight, self._rem_rwnd)
-        while ((not self._send_buffer.empty()) or len(self._rtx_queue) > 0) \
+        while ((not len(self._send_buffer) == 0 or len(self._rtx_queue) > 0) \
                 and self.state != self.CLOSED:
             if eff_snd_wnd == 0 and self.debug:
                 tools.print_rgb('\t\t\t! Zero Window !', rgb=(255, 50, 50))
-            if tools.tcp_sn_lt(self._snd_nxt,
-                    tools.mod32(self._snd_una + eff_snd_wnd)) \
-                            and not self._send_buffer.empty() \
+            if tools.tcp_sn_lt(self._snd_nxt, tools.mod32(self._snd_una + eff_snd_wnd)) \
+                            and not len(self._send_buffer) == 0 \
                             and eff_snd_wnd > 0 \
                             and self._in_flight <= self._rem_rwnd \
                             and self.state != self.CLOSED:
+
+                payload = b''
+                # Nagel's algorithm
+                if len(self._rtx_queue) > 0:
+                    if len(self._send_buffer) < self._mss:
+                        continue
+                    else:
+                        payload = bytes(self._send_buffer[0:self._mss])
+                        self._send_buffer = self._send_buffer[self._mss:]
+                else:
+                    if len(self._send_buffer) > self._mss:
+                        payload = bytes(self._send_buffer[0:self._mss])
+                        self._send_buffer = self._send_buffer[self._mss:]
+                    else:
+                        payload = bytes(self._send_buffer[0:])
+                        self._send_buffer.clear()
+
                 segment = TCPSegment()
-                segment.payload = self._send_buffer.get()
+                segment.payload = payload
                 segment.src_port = self.local_port
                 segment.dst_port = self.remote_port
                 segment.ack = 1
-                if self._send_buffer.empty():
+                if len(segment.payload) < self._mss:
                     segment.psh = 1
                 segment.seq_nr = self._snd_nxt
                 segment.ack_nr = self._rcv_nxt
@@ -1295,8 +1305,23 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         answer = TCPSegment()
         answer.ack = 1
-        if not self._send_buffer.empty():
-            answer.payload = self._send_buffer.get()
+        if len(self._send_buffer) > 0:
+            payload = b''
+            # Nagel's algorithm
+            if len(self._rtx_queue) > 0:
+                if len(self._send_buffer) < self._mss:
+                    continue
+                else:
+                    payload = bytes(self._send_buffer[0:self._mss])
+                    self._send_buffer = self._send_buffer[self._mss:]
+            else:
+                if len(self._send_buffer) > self._mss:
+                    payload = bytes(self._send_buffer[0:self._mss])
+                    self._send_buffer = self._send_buffer[self._mss:]
+                else:
+                    payload = bytes(self._send_buffer[0:])
+                    self._send_buffer.clear()
+            answer.payload = payload
         if self.state == self.CLOSE_WAIT:
                 #and len(self._recv_buffer) == 0: #????
             answer.fin = 1
