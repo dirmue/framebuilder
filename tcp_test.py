@@ -10,11 +10,11 @@ if not tools.is_valid_ipv4_address(sys.argv[1]):
     except:
         sys.exit(1)
 
-h = tcp.TCPHandler('wlp3s0', debug=False)
+h = tcp.TCPHandler('wlp3s0', debug=True)
 start = time.time()
 h.open(dst_ip, int(sys.argv[2]))
 
-if len(sys.argv) > 3 and h.state != h.CLOSED:
+if len(sys.argv) > 3:
     # transfer a file ...
     with open(sys.argv[3], 'r') as file:
         payload = file.read().encode()
@@ -25,11 +25,11 @@ else:
         while h.state != h.CLOSED:
             user_input = input() + '\n'
             h.send(user_input.encode())
-            print(h.receive().decode('utf-8'), end='')
     except (KeyboardInterrupt, EOFError):
-        pass
-if h.state != h.CLOSED:
+        h.close()
+if h.state == h.ESTABLISHED:
     h.close()
-    print((h.receive()).decode('utf-8'), end='')
+    while h.state != h.CLOSED:
+        print((h.receive()).decode('utf-8'), end='')
 print('\n---------------\ntransfer took', time.time() - start, 'seconds')
 print('\n\nBye!')
