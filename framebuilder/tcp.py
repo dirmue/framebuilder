@@ -1900,9 +1900,12 @@ class TCPHandler(ipv4.IPv4Handler):
         if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
             self.__send_ack()
 
-        if seg_cat & self.SEG_ACK and not (seg_cat & self.SEG_DUP_ACK):
+        if seg_cat & self.SEG_ACK:
             # ACK received            
-            if self._dup_ack_cnt > 0:
+            if seg_cat & self.SEG_DUP_ACK:
+                self._dup_ack_cnt += 1
+
+            if self._dup_ack_cnt > 2:
                 # Fast Recovery
                 self.__process_rtx_queue()
                 self._dup_ack_cnt = 0
@@ -1910,24 +1913,23 @@ class TCPHandler(ipv4.IPv4Handler):
                     tools.print_rgb(
                             '\tset slow start threshold to {}'.format(
                                 self._ssthresh), rgb=(224, 127, 127))
+            if not (seg_cat & self.SEG_DUP_ACK):
 
-            if self._snd_wnd < self._ssthresh:
-                # Slow Start
-                self._snd_wnd += self._mss
-                if self.debug:
-                    tools.print_rgb(
-                            '\tincreased cwnd to {} bytes'.format(
-                                self._snd_wnd), rgb=(127, 127, 127))
-            else:
-                # Congestion Avoidance
-                self._snd_wnd += self._mss * self._mss // self._snd_wnd
-                if self.debug:
-                    tools.print_rgb(
-                            '\tincreased cwnd to {} bytes'.format(
-                                self._snd_wnd), rgb=(127, 127, 127))
+                if self._snd_wnd < self._ssthresh:
+                    # Slow Start
+                    self._snd_wnd += self._mss
+                    if self.debug:
+                        tools.print_rgb(
+                                '\tincreased cwnd to {} bytes'.format(
+                                    self._snd_wnd), rgb=(127, 127, 127))
+                else:
+                    # Congestion Avoidance
+                    self._snd_wnd += self._mss * self._mss // self._snd_wnd
+                    if self.debug:
+                        tools.print_rgb(
+                                '\tincreased cwnd to {} bytes'.format(
+                                    self._snd_wnd), rgb=(127, 127, 127))
         
-        if seg_cat & self.SEG_DUP_ACK:
-            self._dup_ack_cnt += 1
 
         return next_seg
 
