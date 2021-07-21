@@ -1,7 +1,5 @@
 '''Module for TCP functions'''
 
-import copy
-import queue
 from time import time_ns
 from framebuilder import tools, errors as err, layer4, ipv4
 
@@ -1208,10 +1206,9 @@ class TCPHandler(ipv4.IPv4Handler):
         slen = min(self._mss, eff_snd_wnd)
         if len(self._rtx_queue) > 0:
             if len(self._send_buffer) < self._mss:
-                return None 
-            else:
-                payload = bytes(self._send_buffer[0:slen])
-                self._send_buffer = self._send_buffer[slen:]
+                return None
+            payload = bytes(self._send_buffer[0:slen])
+            self._send_buffer = self._send_buffer[slen:]
         else:
             if len(self._send_buffer) > self._mss:
                 payload = bytes(self._send_buffer[0:slen])
@@ -1242,9 +1239,9 @@ class TCPHandler(ipv4.IPv4Handler):
         self._send_buffer.extend(data)
 
         while True:
-            # connection closed
             if self.state == self.CLOSED:
                 break
+
             # nothing to (re-)send anymore
             if len(self._send_buffer) == 0 and len(self._rtx_queue) == 0:
                 break
@@ -1254,23 +1251,28 @@ class TCPHandler(ipv4.IPv4Handler):
             eff_snd_wnd = max(0, min(self._snd_wnd - self._in_flight,
                     self._rem_rwnd - self._in_flight))
 
-            # receive acknowledgements and update the send window
+            # receive acknowledgements
             ack = self.receive_segment()
+            if self.state == self.CLOSE_WAIT:
+                self.close()
+                break
+
+            # process and clean retransmission queue
             if ack is not None:
-                self.__clean_rtx_queue()               
+                self.__clean_rtx_queue()
             self.__process_rtx_queue()
 
             # send window full, do not send anything and wait for acks
             if eff_snd_wnd == 0:
                 continue
 
-            if not tools.tcp_sn_lt(self._snd_nxt, 
+            if not tools.tcp_sn_lt(self._snd_nxt,
                     tools.mod32(self._snd_una + eff_snd_wnd)):
                 continue
 
             if len(self._send_buffer) == 0:
                 continue
-            
+
             payload = self.__get_send_payload(eff_snd_wnd)
             if payload is None:
                 continue
@@ -1292,7 +1294,7 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         Close the connection
         '''
-        if self.state != self.ESTABLISHED:
+        if self.state == self.CLOSED:
             raise err.NoTCPConnectionException('invalid state: ' + \
                     self.get_state_str())
         segment = TCPSegment()
@@ -1304,11 +1306,13 @@ class TCPHandler(ipv4.IPv4Handler):
         segment.ack_nr = self._rcv_nxt
         segment.window = self._rcv_wnd
         self.send_segment(segment)
-        self.state = self.FIN_WAIT_1
+        if self.state == self.ESTABLISHED:
+            self.state = self.FIN_WAIT_1
         while self.state != self.CLOSING and self.state != self.TIME_WAIT and \
                 self.state != self.CLOSED:
             self.receive_segment()
-        self.state = self.CLOSED
+        if self.state != self.CLOSED:
+            self.state = self.CLOSED
         if self.debug:
             tools.print_rgb('connection CLOSED',
                     rgb=(127, 127, 127), bold=True)
@@ -1334,11 +1338,10 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         answer = TCPSegment()
         answer.ack = 1
-        payload = b''
         if self.state == self.CLOSE_WAIT:
-                #and len(self._recv_buffer) == 0: #????
-            answer.fin = 1
-            self.state = self.LAST_ACK
+            if len(self._recv_buffer) == 0 and len(self._rtx_queue) == 0:
+                answer.fin = 1
+                self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
             answer.syn = 1
             answer.add_tcp_mss_option(self._mss)
@@ -1595,10 +1598,8 @@ class TCPHandler(ipv4.IPv4Handler):
             tools.unhide_from_krnl_in(self.interface, self.local_ip,
                     self.local_port)
             return segment
-            if self.debug:
-                tools.print_rgb('entering TIME-WAIT state',
-                        rgb=(127, 127, 127), bold=True)
         if segment.rst == 1:
+            self.state = self.CLOSED
             return segment
         return None
 
@@ -1612,7 +1613,7 @@ class TCPHandler(ipv4.IPv4Handler):
             tools.print_rgb('\tprocessing rtx...', rgb=(127, 127, 127))
         for rtx_entry in self._rtx_queue:
             if tools.tcp_sn_gt(
-                    self._snd_una, 
+                    self._snd_una,
                     tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length - 1)
                     ):
                 if rtx_entry['delay'] == 0:
@@ -1627,8 +1628,7 @@ class TCPHandler(ipv4.IPv4Handler):
                         rtx_entry['segment'].ack_nr,
                         self._snd_una), rgb=(127, 127, 127))
                 continue
-            elif tools.tcp_sn_gt(self._snd_una,
-                    rtx_entry['segment'].seq_nr):
+            if tools.tcp_sn_gt(self._snd_una, rtx_entry['segment'].seq_nr):
                 pl_slice = rtx_entry['segment'].payload[self._snd_una:]
                 self._in_flight -= (rtx_entry['segment'].length - len(pl_slice))
                 rtx_entry['segment'].payload = pl_slice
@@ -1659,15 +1659,19 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         if self.state == self.CLOSED:
             self._rtx_queue.clear()
+            return
         if self._dup_ack_cnt > 2:
             # Third duplicate ACK in a row --> Fast Retransmission
             if self.debug:
-                tools.print_rgb(
-                    '\treceived 3 duplicate ACKs, resend ALL segments in queue',
-                    rgb=(255, 50, 50), bold=True)
+                tools.print_rgb('\ttriple DUP-ACKs, resending ALL segments:',
+                        rgb=(255, 50, 50), bold=True)
             for rtx_entry in self._rtx_queue:
                 self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
                 self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
+                if self.debug:
+                    tools.print_rgb('\t\t resending {}'.format(
+                            rtx_entry['segment'].seq_nr),
+                            rgb=(127, 127, 127), bold=True)
                 super().send(rtx_entry['segment'], dont_frag)
                 curr_time = time_ns()
                 rtx_entry['time'] = curr_time
@@ -1679,8 +1683,8 @@ class TCPHandler(ipv4.IPv4Handler):
         for rtx_entry in self._rtx_queue:
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) < curr_time:
                 # Timeout! RFC 2581: ssthresh = max (FlightSize / 2, 2*SMSS)
-                # Implementation Note: an easy mistake to make is to 
-                # simply use cwnd, rather than FlightSize, which in some 
+                # Implementation Note: an easy mistake to make is to
+                # simply use cwnd, rather than FlightSize, which in some
                 # implementations may incidentally increase well beyond rwnd.
                 if not timeout:
                     self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
@@ -1697,7 +1701,7 @@ class TCPHandler(ipv4.IPv4Handler):
                             self._rto), rgb=(255, 50, 50))
                     tools.print_rgb(
                         '\t\tset SND_WND {} SSTHRESH {}'.format(
-                            self._snd_wnd, self._ssthresh), 
+                            self._snd_wnd, self._ssthresh),
                         rgb=(150, 50, 50), bold=True)
                 if rtx_entry['delay'] > 6:
                     self.abort()
@@ -1771,7 +1775,7 @@ class TCPHandler(ipv4.IPv4Handler):
     def __categorize_segment(self, segment: TCPSegment):
         '''
         Categorize segment, OR-ing all category flags together and return result
-        
+
         :param segment: segment to evaluate
         '''
         result = 0
@@ -1785,14 +1789,11 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.fin == 1:
             result |= self.SEG_FIN
         if seg_size == 0 \
-                and tools.tcp_sn_lt(segment.ack_nr, self._snd_una) \
+                and segment.ack_nr == self._snd_una \
                 and segment.window == self._rem_rwnd \
                 and self._rcv_nxt != 0 \
                 and self._snd_nxt != self._iss \
-                and result & self.SEG_SYN == 0 \
-                and result & self.SEG_FIN == 0 \
-                and result & self.SEG_SYN_ACK == 0 \
-                and result & self.SEG_RST == 0:
+                and result == 0:
             result |= self.SEG_DUP_ACK
         if seg_size > 0 and tools.tcp_sn_lt(segment.ack_nr, self._snd_una) \
                 and result & self.SEG_SYN == 0:
@@ -1846,7 +1847,7 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         # evaluate checksum
-        if not next_seg.verify_checksum:
+        if not next_seg.verify_checksum():
             return None
 
         seg_cat = self.__categorize_segment(next_seg)
@@ -1895,42 +1896,37 @@ class TCPHandler(ipv4.IPv4Handler):
             tools.print_rgb('\tsegment categories: [{}]'.format(
                     self.__get_cat_str(seg_cat)),
                     rgb=(75, 75, 127), bold=True)
-
         # only acknowledge if segment is not a pure ACK and not a reset
-        if not seg_cat & self.SEG_PURE_ACK and not seg_cat & self.SEG_RST:
+        if not seg_cat & self.SEG_PURE_ACK \
+                and not seg_cat & self.SEG_RST \
+                and not seg_cat & self.SEG_DUP_ACK:
             self.__send_ack()
-
-        if seg_cat & self.SEG_ACK:
-            # ACK received            
-            if seg_cat & self.SEG_DUP_ACK:
-                self._dup_ack_cnt += 1
-
+        if seg_cat & self.SEG_DUP_ACK:
+            # duplicate ACK received
+            self._dup_ack_cnt += 1
             if self._dup_ack_cnt > 2:
-                # Fast Recovery
+                # Fast Retransmit/Recovery
                 self.__process_rtx_queue()
                 self._dup_ack_cnt = 0
                 if self.debug:
-                    tools.print_rgb(
-                            '\tset slow start threshold to {}'.format(
-                                self._ssthresh), rgb=(224, 127, 127))
-            if not (seg_cat & self.SEG_DUP_ACK):
+                    tools.print_rgb('\tset slow start threshold to {}'.format(
+                        self._ssthresh), rgb=(224, 127, 127))
+        if seg_cat & self.SEG_ACK:
+            # valid ACK received
+            self._dup_ack_cnt = 0
 
-                if self._snd_wnd < self._ssthresh:
-                    # Slow Start
-                    self._snd_wnd += self._mss
-                    if self.debug:
-                        tools.print_rgb(
-                                '\tincreased cwnd to {} bytes'.format(
-                                    self._snd_wnd), rgb=(127, 127, 127))
-                else:
-                    # Congestion Avoidance
-                    self._snd_wnd += self._mss * self._mss // self._snd_wnd
-                    if self.debug:
-                        tools.print_rgb(
-                                '\tincreased cwnd to {} bytes'.format(
-                                    self._snd_wnd), rgb=(127, 127, 127))
-        
-
+            if self._snd_wnd < self._ssthresh:
+                # Slow Start
+                self._snd_wnd += self._mss
+                if self.debug:
+                    tools.print_rgb('\tincreased cwnd to {} bytes'.format(
+                        self._snd_wnd), rgb=(127, 127, 127))
+            else:
+                # Congestion Avoidance
+                self._snd_wnd += self._mss * self._mss // self._snd_wnd
+                if self.debug:
+                    tools.print_rgb('\tincreased cwnd to {} bytes'.format(
+                                self._snd_wnd), rgb=(127, 127, 127))
         return next_seg
 
 
