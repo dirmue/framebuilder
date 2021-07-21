@@ -1183,8 +1183,6 @@ class TCPHandler(ipv4.IPv4Handler):
         result = b''
         while len(self._recv_buffer) < size:
             self.receive_segment(pass_on_error)
-            #if self.state == self.LAST_ACK or self.state == self.CLOSED:
-            #    break
             result += self._recv_buffer[:size-len(result)]
             self._recv_buffer = self._recv_buffer[size:]
             if len(self._recv_buffer) == 0 or len(result) == size:
@@ -1336,12 +1334,11 @@ class TCPHandler(ipv4.IPv4Handler):
         answer = TCPSegment()
         answer.ack = 1
         if self.state == self.CLOSE_WAIT:
-            if len(self._recv_buffer) == 0:
-                answer.fin = 1
-                if self.debug:
-                    tools.print_rgb('entering LAST-ACK state',
-                            rgb=(127, 127, 127), bold=True)
-                self.state = self.LAST_ACK
+            answer.fin = 1
+            if self.debug:
+                tools.print_rgb('entering LAST-ACK state',
+                        rgb=(127, 127, 127), bold=True)
+            self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
             answer.syn = 1
             answer.add_tcp_mss_option(self._mss)
