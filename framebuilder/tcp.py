@@ -1336,6 +1336,7 @@ class TCPHandler(ipv4.IPv4Handler):
         answer = TCPSegment()
         answer.ack = 1
         if self.state == self.CLOSE_WAIT:
+            print(len(self._recv_buffer))
             if len(self._recv_buffer) == 0 and len(self._rtx_queue) == 0:
                 answer.fin = 1
                 if self.debug:
