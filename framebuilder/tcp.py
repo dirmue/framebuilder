@@ -1183,8 +1183,8 @@ class TCPHandler(ipv4.IPv4Handler):
         result = b''
         while len(self._recv_buffer) < size:
             self.receive_segment(pass_on_error)
-            if self.state == self.LAST_ACK or self.state == self.CLOSED:
-                break
+            #if self.state == self.LAST_ACK or self.state == self.CLOSED:
+            #    break
             result += self._recv_buffer[:size-len(result)]
             self._recv_buffer = self._recv_buffer[size:]
             if len(self._recv_buffer) == 0 or len(result) == size:
