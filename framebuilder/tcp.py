@@ -1186,9 +1186,6 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.state == self.LAST_ACK or self.state == self.CLOSED:
                 break
             result += self._recv_buffer[:size-len(result)]
-            #if self.state == self.LAST_ACK:
-            #    self._recv_buffer = b''
-            #    return b''
             self._recv_buffer = self._recv_buffer[size:]
             if len(self._recv_buffer) == 0 or len(result) == size:
                 break
@@ -1341,6 +1338,9 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.CLOSE_WAIT:
             if len(self._recv_buffer) == 0 and len(self._rtx_queue) == 0:
                 answer.fin = 1
+                if self.debug:
+                    tools.print_rgb('entering LAST-ACKstate',
+                            rgb=(127, 127, 127), bold=True)
                 self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
             answer.syn = 1
