@@ -915,7 +915,6 @@ class TCPHandler(ipv4.IPv4Handler):
     SEG_DUP_ACK = 32
     SEG_FIN = 64
     SEG_RST = 128
-    SEG_SPUR_RETRANS = 256
 
     def __init__(self, interface, local_port=None, remote_ip=None, block=1,
                  t_out=3.0, debug=False):
@@ -1767,8 +1766,6 @@ class TCPHandler(ipv4.IPv4Handler):
             cat_list.append('PURE-ACK')
         if cat_bitmap & self.SEG_RST:
             cat_list.append('RST')
-        if cat_bitmap & self.SEG_SPUR_RETRANS:
-            cat_list.append('SPUR-RETRANS')
         return '|'.join(cat_list)
 
 
@@ -1795,9 +1792,6 @@ class TCPHandler(ipv4.IPv4Handler):
                 and self._snd_nxt != self._iss \
                 and result == 0:
             result |= self.SEG_DUP_ACK
-        if seg_size > 0 and tools.tcp_sn_lt(segment.ack_nr, self._snd_una) \
-                and result & self.SEG_SYN == 0:
-            result |= self.SEG_SPUR_RETRANS
         if result == 0 and self._is_in_rcv_seq_space(segment):
             if seg_size == 0:
                 if segment.ack_nr == tools.mod32(self._iss + 1):
