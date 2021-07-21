@@ -1339,7 +1339,7 @@ class TCPHandler(ipv4.IPv4Handler):
             if len(self._recv_buffer) == 0:
                 answer.fin = 1
                 if self.debug:
-                    tools.print_rgb('entering LAST-ACKstate',
+                    tools.print_rgb('entering LAST-ACK state',
                             rgb=(127, 127, 127), bold=True)
                 self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
