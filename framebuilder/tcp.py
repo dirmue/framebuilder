@@ -1678,6 +1678,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 rtx_entry['time'] = curr_time
                 backoff = curr_time + self._rtt
             # Wait one RTT for ACKs
+            if self.debug:
+                tools.print_rgb('\t\t waiting {} ms for ACKs '.format(
+                        self._rtt // 10**6),
+                        rgb=(150, 50, 50), bold=True)
             while time_ns() < backoff:
                 ack = self.receive_segment(pass_on_error)
                 if ack is not None:
@@ -1716,6 +1720,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 super().send(rtx_entry['segment'], dont_frag)
                 backoff = time_ns() + self._rtt
                 # Wait one RTT for ACKs
+                if self.debug:
+                    tools.print_rgb('\t\t waiting {} ms for ACKs '.format(
+                            self._rtt // 10**6),
+                            rgb=(150, 50, 50), bold=True)
                 while time_ns() < backoff:
                     ack = self.receive_segment(pass_on_error)
                     if ack is not None:
