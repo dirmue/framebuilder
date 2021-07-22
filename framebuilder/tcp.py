@@ -918,7 +918,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
     MAX_RWIN = 65535
 
-    def __init__(self, interface, local_port=None, remote_ip=None, block=1,
+    def __init__(self, interface, local_port=None, remote_ip=None, block=0,
                  t_out=3.0, debug=False):
         '''
         initialize TCP connection parameters
