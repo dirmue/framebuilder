@@ -916,6 +916,8 @@ class TCPHandler(ipv4.IPv4Handler):
     SEG_FIN = 64
     SEG_RST = 128
 
+    MAX_RWIN = 65535
+
     def __init__(self, interface, local_port=None, remote_ip=None, block=1,
                  t_out=3.0, debug=False):
         '''
@@ -1001,7 +1003,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._mss = self.mtu - 40
 
         # receive window
-        self._max_rwin = 65535
+        self._max_rwin = self.MAX_RWIN
         self._rcv_wnd = (self._max_rwin // self._mss) * self._mss
 
         # remote receive window
@@ -1171,11 +1173,12 @@ class TCPHandler(ipv4.IPv4Handler):
                 rgb=(127, 127, 127), bold=True)
         while self.state != self.CLOSED:
             self.receive_segment()
+            self.__process_rtx_queue()
             if self.state == self.ESTABLISHED:
                 break
 
 
-    def receive(self, size=65535, pass_on_error=True):
+    def receive(self, size=MAX_RWIN, pass_on_error=True):
         '''
         Receive size bytes of data
         :param size: if less or equal 0 read everything
@@ -1650,13 +1653,14 @@ class TCPHandler(ipv4.IPv4Handler):
                 len(self._rtx_queue)), rgb=(127, 127, 127), bold=True)
 
 
-    def __process_rtx_queue(self, dont_frag=True):
+    def __process_rtx_queue(self, dont_frag=True, pass_on_error=True):
         '''
         resend unacknowledged segments if rto is exceeded
         '''
         if self.state == self.CLOSED:
             self._rtx_queue.clear()
             return
+        backoff = 0
         if self._dup_ack_cnt > 2:
             # Third duplicate ACK in a row --> Fast Retransmission
             if self.debug:
@@ -1672,20 +1676,24 @@ class TCPHandler(ipv4.IPv4Handler):
                 super().send(rtx_entry['segment'], dont_frag)
                 curr_time = time_ns()
                 rtx_entry['time'] = curr_time
+                backoff = curr_time + self._rtt
+            # Wait one RTT for ACKs
+            while time_ns() < backoff:
+                ack = self.receive_segment(pass_on_error)
+                if ack is not None:
+                    self.__clean_rtx_queue()
             return
 
         # resend timed out segments
         curr_time = time_ns()
-        timeout = False
         for rtx_entry in self._rtx_queue:
             if rtx_entry['time'] + (self._rto << rtx_entry['delay']) < curr_time:
                 # Timeout! RFC 2581: ssthresh = max (FlightSize / 2, 2*SMSS)
                 # Implementation Note: an easy mistake to make is to
                 # simply use cwnd, rather than FlightSize, which in some
                 # implementations may incidentally increase well beyond rwnd.
-                if not timeout:
-                    self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
-                    self._snd_wnd = self._mss
+                self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+                self._snd_wnd = self._mss
                 if self.debug:
                     tools.print_rgb(
                         '\tretransmission timeout exceeded, resend segment',
@@ -1704,10 +1712,14 @@ class TCPHandler(ipv4.IPv4Handler):
                     self.abort()
                     break
                 rtx_entry['time'] = curr_time
-                if not timeout:
-                    rtx_entry['delay'] += 1
-                    super().send(rtx_entry['segment'], dont_frag)
-                    timeout = True
+                rtx_entry['delay'] += 1
+                super().send(rtx_entry['segment'], dont_frag)
+                backoff = time_ns() + self._rtt
+                # Wait one RTT for ACKs
+                while time_ns() < backoff:
+                    ack = self.receive_segment(pass_on_error)
+                    if ack is not None:
+                        self.__clean_rtx_queue()
 
 
     def send_segment(self, segment, dont_frag=True):
