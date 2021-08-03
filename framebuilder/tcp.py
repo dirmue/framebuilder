@@ -1718,16 +1718,9 @@ class TCPHandler(ipv4.IPv4Handler):
                 rtx_entry['time'] = curr_time
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
-                backoff = time_ns() + self._rtt
-                # Wait one RTT for ACKs
-                if self.debug:
-                    tools.print_rgb('\t\t waiting {} ms for ACKs '.format(
-                            self._rtt // 10**6),
-                            rgb=(150, 50, 50), bold=True)
-                while time_ns() < backoff:
-                    ack = self.receive_segment(pass_on_error)
-                    if ack is not None:
-                        self.__clean_rtx_queue()
+            ack = self.receive_segment(pass_on_error)
+            if ack is not None:
+                self.__clean_rtx_queue()
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1851,21 +1844,33 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if self.state not in [self.SYN_SENT, self.LISTEN]:
             if not self._is_in_rcv_seq_space(segment):
+                if self.debug:
+                    tools.print_rgb('!received segment out of sequence space!', 
+                            rgb=(99, 30, 30))
                 return None
 
         next_seg = self._recv_seg_handlers[self.state](segment)
 
         if next_seg is None:
+            if self.debug:
+                tools.print_rgb('!segment discarded by state handler!', 
+                        rgb=(99, 30, 30))
             return None
 
         # evaluate checksum
         if not next_seg.verify_checksum():
+            if self.debug:
+                tools.print_rgb('!invalid TCP checksum!', 
+                        rgb=(99, 30, 30))
             return None
 
         seg_cat = self.__categorize_segment(next_seg)
 
         # drop out of order segments
         if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt):
+            if self.debug:
+                tools.print_rgb('!out of order segment dropped!', 
+                        rgb=(99, 30, 30))
             return None
 
         # update receive window size
