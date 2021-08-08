@@ -1877,15 +1877,17 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if next_seg is None:
             if self.debug:
-                tools.print_rgb('!segment discarded by state handler!',
-                        rgb=(99, 30, 30))
+                tools.print_rgb('\n\t!segment discarded by state handler!',
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\n\tSTATE: {self.get_state_str()}',
+                        rgb=(199, 30, 30))
             return None
 
         # evaluate checksum
         if not next_seg.verify_checksum():
             if self.debug:
-                tools.print_rgb('!invalid TCP checksum!',
-                        rgb=(99, 30, 30))
+                tools.print_rgb('\n\t!invalid TCP checksum!',
+                        rgb=(199, 30, 30))
             return None
 
         seg_cat = self.__categorize_segment(next_seg)
