@@ -1352,7 +1352,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.CLOSE_WAIT:
             answer.fin = 1
             if self.debug:
-                tools.print_rgb('entering LAST-ACK state',
+                tools.print_rgb('\n\tentering LAST-ACK state',
                         rgb=(127, 127, 127), bold=True)
             self.state = self.LAST_ACK
         if self.state == self.SYN_RECEIVED:
@@ -1391,7 +1391,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self.remote_port = segment.src_port
             self.state = self.SYN_RECEIVED
             if self.debug:
-                tools.print_rgb('entering SYN-RECEIVED state',
+                tools.print_rgb('\n\tentering SYN-RECEIVED state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         return None
@@ -1419,12 +1419,12 @@ class TCPHandler(ipv4.IPv4Handler):
             self.remote_port = segment.src_port
             self.state = self.ESTABLISHED
             if self.debug:
-                tools.print_rgb('entering ESTABLISHED state',
+                tools.print_rgb('\n\tentering ESTABLISHED state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         if segment.rst == 1:
             if self.debug:
-                tools.print_rgb('RST received, entering CLOSED state',
+                tools.print_rgb('\n\tRST received, entering CLOSED state',
                         rgb=(127, 127, 127), bold=True)
             self.state = self.CLOSED
             return segment
@@ -1446,7 +1446,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if all(conditions):
             self.state = self.ESTABLISHED
             if self.debug:
-                tools.print_rgb('entering ESTABLISHED state',
+                tools.print_rgb('\n\tentering ESTABLISHED state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         if segment.syn == 1:
@@ -1455,13 +1455,13 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.rst == 1:
             self.state = self.LISTEN
             if self.debug:
-                tools.print_rgb('RST received, entering LISTEN state',
+                tools.print_rgb('\n\tRST received, entering LISTEN state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         if segment.fin == 1:
             self.state = self.FIN_WAIT_1
             if self.debug:
-                tools.print_rgb('FIN received, entering FIN-WAIT-1 state',
+                tools.print_rgb('\n\tFIN received, entering FIN-WAIT-1 state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         return None
@@ -1482,12 +1482,12 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.fin == 1:
                 self.state = self.CLOSE_WAIT
                 if self.debug:
-                    tools.print_rgb('FIN received, entering CLOSE-WAIT state',
+                    tools.print_rgb('\n\tFIN received, entering CLOSE-WAIT state',
                             rgb=(127, 127, 127), bold=True)
             return segment
         if segment.rst == 1:
             if self.debug:
-                tools.print_rgb('RST received, aborting connection',
+                tools.print_rgb('\n\tRST received, aborting connection',
                         rgb=(127, 127, 127), bold=True)
             self.state = self.CLOSED
             return segment
@@ -1508,17 +1508,17 @@ class TCPHandler(ipv4.IPv4Handler):
         if all(conditions):
             self.state = self.FIN_WAIT_2
             if self.debug:
-                tools.print_rgb('entering FIN-WAIT-2 state',
+                tools.print_rgb('\n\tentering FIN-WAIT-2 state',
                         rgb=(127, 127, 127), bold=True)
             if segment.fin == 1:
                 self.state = self.CLOSING
                 if self.debug:
-                    tools.print_rgb('FIN received, entering CLOSING state',
+                    tools.print_rgb('\n\tFIN received, entering CLOSING state',
                             rgb=(127, 127, 127), bold=True)
             return segment
         if segment.rst == 1:
             if self.debug:
-                tools.print_rgb('RST received, aborting connection',
+                tools.print_rgb('\n\tRST received, aborting connection',
                         rgb=(127, 127, 127), bold=True)
             self.state = self.CLOSED
             return segment
@@ -1540,13 +1540,13 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.fin == 1:
                 self.state = self.TIME_WAIT
                 if self.debug:
-                    tools.print_rgb('FIN received, entering TIME-WAIT state',
+                    tools.print_rgb('\n\tFIN received, entering TIME-WAIT state',
                             rgb=(127, 127, 127), bold=True)
             return segment
         if segment.rst == 1:
             self.state = self.CLOSED
             if self.debug:
-                tools.print_rgb('RST received, entering CLOSED state',
+                tools.print_rgb('\n\tRST received, entering CLOSED state',
                         rgb=(127, 127, 127), bold=True)
         return None
 
@@ -1568,7 +1568,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.rst == 1:
             self.state = self.CLOSED
             if self.debug:
-                tools.print_rgb('RST received, entering CLOSED state',
+                tools.print_rgb('\n\tRST received, entering CLOSED state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         return None
@@ -1582,7 +1582,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.ack == 1:
             self.state = self.TIME_WAIT
             if self.debug:
-                tools.print_rgb('entering TIME-WAIT state',
+                tools.print_rgb('\n\tentering TIME-WAIT state',
                         rgb=(127, 127, 127), bold=True)
             return segment
         return None
@@ -1594,9 +1594,9 @@ class TCPHandler(ipv4.IPv4Handler):
         :param packet: Incoming packet
         '''
         if self.debug:
-            tools.print_rgb('received segment in TIME-WAIT state, sending RST',
+            tools.print_rgb('\n\treceived segment in TIME-WAIT state, sending RST',
                     rgb=(127, 127, 127), bold=True)
-            tools.print_rgb('droped segment SEQ {}'.format(segment.ack_nr),
+            tools.print_rgb('\n\tdroped segment SEQ {}'.format(segment.ack_nr),
                     rgb=(127, 127, 127))
             self.state = self.CLOSED
 
@@ -1609,7 +1609,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if segment.ack == 1:
             self.state = self.CLOSED
             if self.debug:
-                tools.print_rgb('entering CLOSED state',
+                tools.print_rgb('\n\tentering CLOSED state',
                         rgb=(127, 127, 127), bold=True)
             tools.unhide_from_krnl_in(self.interface, self.local_ip,
                     self.local_port)
@@ -1625,8 +1625,6 @@ class TCPHandler(ipv4.IPv4Handler):
         remove acknowledged segments from rtx_queue
         '''
         unacknowledged = []
-        if self.debug:
-            tools.print_rgb('\tprocessing rtx...', rgb=(127, 127, 127))
         for rtx_entry in self._rtx_queue:
             if tools.tcp_sn_gt(
                     self._snd_una,
@@ -1663,10 +1661,6 @@ class TCPHandler(ipv4.IPv4Handler):
                         rtx_entry['segment'].length), rgb=(255, 0, 0))
             unacknowledged.append(rtx_entry)
         self._rtx_queue = unacknowledged
-        if self.debug:
-            tools.print_rgb('\t...done -> ', rgb=(127, 127, 127), end='')
-            tools.print_rgb('{} segments in queue'.format(
-                len(self._rtx_queue)), rgb=(127, 127, 127), bold=True)
 
 
     def __process_rtx_queue(self, dont_frag=True, pass_on_error=True):
@@ -1683,7 +1677,6 @@ class TCPHandler(ipv4.IPv4Handler):
                 tools.print_rgb('\ttriple DUP-ACKs, resending ALL segments:',
                         rgb=(255, 50, 50), bold=True)
             for rtx_entry in self._rtx_queue:
-                self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
                 self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
                 if self.debug:
                     tools.print_rgb('\t\t resending {}'.format(
@@ -1693,6 +1686,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 curr_time = time_ns()
                 rtx_entry['time'] = curr_time
                 backoff = curr_time + self._rtt
+            self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+            if self.debug:
+                tools.print_rgb('\tset slow start threshold to {}'.format(
+                    self._ssthresh), rgb=(224, 127, 127))
             # Wait one RTT for ACKs
             if self.debug:
                 tools.print_rgb('\t\t waiting {} ms for ACKs '.format(
@@ -1963,9 +1960,6 @@ class TCPHandler(ipv4.IPv4Handler):
                 # Fast Retransmit/Recovery
                 self.__process_rtx_queue()
                 self._dup_ack_cnt = 0
-                if self.debug:
-                    tools.print_rgb('\tset slow start threshold to {}'.format(
-                        self._ssthresh), rgb=(224, 127, 127))
         if seg_cat & self.SEG_ACK:
             # valid ACK received
             self._dup_ack_cnt = 0
