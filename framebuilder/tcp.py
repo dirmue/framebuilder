@@ -1919,7 +1919,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if not seg_cat & self.SEG_RETX:
             # update remote receive window, if necessary
-            if self._rem_rwnd != next_seg.window
+            if self._rem_rwnd != next_seg.window:
                 self._rem_rwnd = next_seg.window
 
         if self.debug:
