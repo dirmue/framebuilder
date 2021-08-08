@@ -1317,7 +1317,11 @@ class TCPHandler(ipv4.IPv4Handler):
             self.state = self.FIN_WAIT_1
         while self.state != self.CLOSING and self.state != self.TIME_WAIT and \
                 self.state != self.CLOSED:
-            self.receive_segment()
+            ack = self.receive_segment()
+            # process and clean retransmission queue
+            if ack is not None:
+                self.__clean_rtx_queue()
+            self.__process_rtx_queue()
         if self.state != self.CLOSED:
             self.state = self.CLOSED
         if self.debug:
