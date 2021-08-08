@@ -1850,7 +1850,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 if self.debug:
                     tools.print_rgb('\treceived segment out of sequence space', 
                             rgb=(199, 30, 30))
-                    tools.print_rgb(f'\tseq nr: {next_seg.seq_nr}', 
+                    tools.print_rgb(f'\tseq nr: {segment.seq_nr}', 
                             rgb=(199, 30, 30))
                     tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
                             rgb=(199, 30, 30))
@@ -1955,6 +1955,8 @@ class TCPHandler(ipv4.IPv4Handler):
                 if self.debug:
                     tools.print_rgb('\tincreased cwnd to {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
+        if seg_cat & self.SEG_RETX:
+            return None
         return next_seg
 
 
