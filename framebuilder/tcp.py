@@ -960,7 +960,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._in_flight = 0
 
         # initial retransmission timeout 1s
-        self._rto = 30**9
+        self._rto = 10**9
 
         self._send_buffer = bytearray()
         self._recv_buffer = bytearray()
@@ -1133,7 +1133,11 @@ class TCPHandler(ipv4.IPv4Handler):
         tools.hide_from_krnl_in(handler.interface, handler.local_ip,
                 handler.local_port)
         while True:
-            handler.receive_segment()
+            ack = handler.receive_segment()
+            # process and clean retransmission queue
+            if ack is not None:
+                handler.__clean_rtx_queue()
+            handler.__process_rtx_queue()
             if handler.state == cls.ESTABLISHED:
                 return handler
 
@@ -1174,7 +1178,10 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.remote_ip, self.remote_port),
                 rgb=(127, 127, 127), bold=True)
         while self.state != self.CLOSED:
-            self.receive_segment()
+            ack = self.receive_segment()
+            # process and clean retransmission queue
+            if ack is not None:
+                self.__clean_rtx_queue()
             self.__process_rtx_queue()
             if self.state == self.ESTABLISHED:
                 break
@@ -1429,7 +1436,6 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.ack == 1,
                 segment.rst == 0,
                 segment.fin == 0,
-                segment.syn == 0
                 )
 
         if all(conditions):
@@ -1854,27 +1860,27 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if self.state not in [self.SYN_SENT, self.LISTEN] and self.debug:
             if not self._is_in_rcv_seq_space(segment):
-                tools.print_rgb('\treceived segment out of sequence space', 
+                tools.print_rgb('\n\treceived segment out of sequence space',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\tseq nr: {segment.seq_nr}', 
+                tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
+                tools.print_rgb(f'\texpected: {self._rcv_nxt}',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\twindow: {self._rcv_wnd}', 
+                tools.print_rgb(f'\twindow: {self._rcv_wnd}',
                         rgb=(199, 30, 30))
 
         next_seg = self._recv_seg_handlers[self.state](segment)
 
         if next_seg is None:
             if self.debug:
-                tools.print_rgb('!segment discarded by state handler!', 
+                tools.print_rgb('!segment discarded by state handler!',
                         rgb=(99, 30, 30))
             return None
 
         # evaluate checksum
         if not next_seg.verify_checksum():
             if self.debug:
-                tools.print_rgb('!invalid TCP checksum!', 
+                tools.print_rgb('!invalid TCP checksum!',
                         rgb=(99, 30, 30))
             return None
 
@@ -1882,13 +1888,13 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # out of order segments, packet lost? --> cat OOO
         if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt) and self.debug:
-                tools.print_rgb('\treceived greater sequence no. than expected', 
+                tools.print_rgb('\n\treceived greater seq no than expected',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\tseq nr: {segment.seq_nr}', 
+                tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
+                tools.print_rgb(f'\texpected: {self._rcv_nxt}',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\twindow: {self._rcv_wnd}', 
+                tools.print_rgb(f'\twindow: {self._rcv_wnd}',
                         rgb=(199, 30, 30))
 
         if not seg_cat & self.SEG_RETX:
@@ -1906,7 +1912,7 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.SYN_RECEIVED:
             self.remote_ip = packet.src_addr
 
-        
+
         if not seg_cat & self.SEG_RETX and not seg_cat & self.SEG_OOO:
             self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
             # SYN and FIN flag are treated as one virtual byte
