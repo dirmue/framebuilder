@@ -1440,6 +1440,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 segment.ack == 1,
                 segment.rst == 0,
                 segment.fin == 0,
+                segment.syn == 0
                 )
 
         if all(conditions):
@@ -1447,6 +1448,9 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.debug:
                 tools.print_rgb('entering ESTABLISHED state',
                         rgb=(127, 127, 127), bold=True)
+            return segment
+        if segment.syn == 1:
+            # probably a retransmission
             return segment
         if segment.rst == 1:
             self.state = self.LISTEN
@@ -1879,8 +1883,8 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.debug:
                 tools.print_rgb('\n\t!segment discarded by state handler!',
                         rgb=(199, 30, 30))
-                tools.print_rgb(f'\n\tSTATE: {self.get_state_str()}',
-                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\tSTATE: {self.get_state_str()}',
+                        rgb=(199, 30, 30), bold=True)
             return None
 
         # evaluate checksum
