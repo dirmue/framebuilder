@@ -916,6 +916,7 @@ class TCPHandler(ipv4.IPv4Handler):
     SEG_FIN = 64
     SEG_RST = 128
     SEG_RETX = 256
+    SEG_OOO = 512
 
     MAX_RWIN = 65535
 
@@ -1778,6 +1779,10 @@ class TCPHandler(ipv4.IPv4Handler):
             cat_list.append('PURE-ACK')
         if cat_bitmap & self.SEG_RST:
             cat_list.append('RST')
+        if cat_bitmap & self.SEG_RETX:
+            cat_list.append('RETRANS')
+        if cat_bitmap & self.SEG_OOO:
+            cat_list.append('OOO')
         return '|'.join(cat_list)
 
 
@@ -1812,6 +1817,8 @@ class TCPHandler(ipv4.IPv4Handler):
             result |= self.SEG_ACK
         if tools.tcp_sn_lt(segment.seq_nr, self._rcv_nxt):
             result |= self.SEG_RETX
+        if tools.tcp_sn_lt(self._rcv_nxt, segment.seq_nr):
+            result |= self.SEG_OOO
         return result
 
 
@@ -1847,15 +1854,14 @@ class TCPHandler(ipv4.IPv4Handler):
 
         if self.state not in [self.SYN_SENT, self.LISTEN] and self.debug:
             if not self._is_in_rcv_seq_space(segment):
-                if self.debug:
-                    tools.print_rgb('\treceived segment out of sequence space', 
-                            rgb=(199, 30, 30))
-                    tools.print_rgb(f'\tseq nr: {segment.seq_nr}', 
-                            rgb=(199, 30, 30))
-                    tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
-                            rgb=(199, 30, 30))
-                    tools.print_rgb(f'\twindow: {self._rcv_wnd}', 
-                            rgb=(199, 30, 30))
+                tools.print_rgb('\treceived segment out of sequence space', 
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\tseq nr: {segment.seq_nr}', 
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\twindow: {self._rcv_wnd}', 
+                        rgb=(199, 30, 30))
 
         next_seg = self._recv_seg_handlers[self.state](segment)
 
@@ -1874,12 +1880,16 @@ class TCPHandler(ipv4.IPv4Handler):
 
         seg_cat = self.__categorize_segment(next_seg)
 
-        # drop out of order segments
-        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt):
-            if self.debug:
-                tools.print_rgb('!out of order segment dropped!', 
-                        rgb=(99, 30, 30))
-            return None
+        # out of order segments, packet lost? --> cat OOO
+        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt) and self.debug:
+                tools.print_rgb('\treceived greater sequence no. than expected', 
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\tseq nr: {segment.seq_nr}', 
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
+                        rgb=(199, 30, 30))
+                tools.print_rgb(f'\twindow: {self._rcv_wnd}', 
+                        rgb=(199, 30, 30))
 
         if not seg_cat & self.SEG_RETX:
             # update receive window size
@@ -1897,7 +1907,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self.remote_ip = packet.src_addr
 
         
-        if not seg_cat & self.SEG_RETX:
+        if not seg_cat & self.SEG_RETX and not seg_cat & self.SEG_OOO:
             self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
             # SYN and FIN flag are treated as one virtual byte
             if next_seg.syn == 1 or next_seg.fin == 1:
@@ -1907,9 +1917,10 @@ class TCPHandler(ipv4.IPv4Handler):
         if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
             self._snd_una = next_seg.ack_nr
 
-        # update remote receive window, if necessary
-        if self._rem_rwnd != next_seg.window:
-            self._rem_rwnd = next_seg.window
+        if not seg_cat & self.SEG_RETX:
+            # update remote receive window, if necessary
+            if self._rem_rwnd != next_seg.window
+                self._rem_rwnd = next_seg.window
 
         if self.debug:
             tools.print_rgb(
@@ -1955,7 +1966,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 if self.debug:
                     tools.print_rgb('\tincreased cwnd to {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
-        if seg_cat & self.SEG_RETX:
+        if seg_cat & self.SEG_RETX or seg_cat & self.SEG_OOO:
             return None
         return next_seg
 
