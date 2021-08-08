@@ -1845,12 +1845,17 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        #if self.state not in [self.SYN_SENT, self.LISTEN]:
-        #    if not self._is_in_rcv_seq_space(segment):
-        #        if self.debug:
-        #            tools.print_rgb('!received segment out of sequence space!', 
-        #                    rgb=(99, 30, 30))
-        #        return None
+        if self.state not in [self.SYN_SENT, self.LISTEN] and self.debug:
+            if not self._is_in_rcv_seq_space(segment):
+                if self.debug:
+                    tools.print_rgb('\treceived segment out of sequence space', 
+                            rgb=(199, 30, 30))
+                    tools.print_rgb(f'\tseq nr: {next_seg.seq_nr}', 
+                            rgb=(199, 30, 30))
+                    tools.print_rgb(f'\texpected: {self._rcv_nxt}', 
+                            rgb=(199, 30, 30))
+                    tools.print_rgb(f'\twindow: {self._rcv_wnd}', 
+                            rgb=(199, 30, 30))
 
         next_seg = self._recv_seg_handlers[self.state](segment)
 
