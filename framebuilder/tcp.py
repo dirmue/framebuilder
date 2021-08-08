@@ -915,6 +915,7 @@ class TCPHandler(ipv4.IPv4Handler):
     SEG_DUP_ACK = 32
     SEG_FIN = 64
     SEG_RST = 128
+    SEG_RETX = 256
 
     MAX_RWIN = 65535
 
@@ -1809,6 +1810,8 @@ class TCPHandler(ipv4.IPv4Handler):
                     result |= self.SEG_FIRST_ACK
                 result |= self.SEG_PURE_ACK
             result |= self.SEG_ACK
+        if tools.tcp_sn_lt(segment.seq_nr, self._rcv_nxt):
+            result |= self.SEG_RETX
         return result
 
 
@@ -1842,12 +1845,12 @@ class TCPHandler(ipv4.IPv4Handler):
             if segment.src_port != self.remote_port:
                 return None
 
-        if self.state not in [self.SYN_SENT, self.LISTEN]:
-            if not self._is_in_rcv_seq_space(segment):
-                if self.debug:
-                    tools.print_rgb('!received segment out of sequence space!', 
-                            rgb=(99, 30, 30))
-                return None
+        #if self.state not in [self.SYN_SENT, self.LISTEN]:
+        #    if not self._is_in_rcv_seq_space(segment):
+        #        if self.debug:
+        #            tools.print_rgb('!received segment out of sequence space!', 
+        #                    rgb=(99, 30, 30))
+        #        return None
 
         next_seg = self._recv_seg_handlers[self.state](segment)
 
@@ -1873,24 +1876,27 @@ class TCPHandler(ipv4.IPv4Handler):
                         rgb=(99, 30, 30))
             return None
 
-        # update receive window size
-        pl_len = next_seg.length
-        if pl_len > 0:
-            self._recv_buffer.extend(next_seg.payload)
-            rwin_bytes = self._rcv_wnd
-            buf_len = len(self._recv_buffer)
-            if rwin_bytes > buf_len:
-                self._rcv_wnd = rwin_bytes - buf_len
-            else:
-                self._rcv_wnd = 0
+        if not seg_cat & self.SEG_RETX:
+            # update receive window size
+            pl_len = next_seg.length
+            if pl_len > 0:
+                self._recv_buffer.extend(next_seg.payload)
+                rwin_bytes = self._rcv_wnd
+                buf_len = len(self._recv_buffer)
+                if rwin_bytes > buf_len:
+                    self._rcv_wnd = rwin_bytes - buf_len
+                else:
+                    self._rcv_wnd = 0
 
         if self.state == self.SYN_RECEIVED:
             self.remote_ip = packet.src_addr
 
-        self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
-        # SYN and FIN flag are treated as one virtual byte
-        if next_seg.syn == 1 or next_seg.fin == 1:
-            self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
+        
+        if not seg_cat & self.SEG_RETX:
+            self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
+            # SYN and FIN flag are treated as one virtual byte
+            if next_seg.syn == 1 or next_seg.fin == 1:
+                self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
 
         # advance self._una if ack number is greater or equal UNA
         if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
