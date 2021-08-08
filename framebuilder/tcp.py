@@ -1978,6 +1978,7 @@ class TCPHandler(ipv4.IPv4Handler):
                                 self._snd_wnd), rgb=(127, 127, 127))
         if seg_cat & self.SEG_RETX or seg_cat & self.SEG_OOO:
             return None
+        self.__clean_rtx_queue()
         return next_seg
 
 
