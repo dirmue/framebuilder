@@ -1133,11 +1133,7 @@ class TCPHandler(ipv4.IPv4Handler):
         tools.hide_from_krnl_in(handler.interface, handler.local_ip,
                 handler.local_port)
         while True:
-            ack = handler.receive_segment()
-            # process and clean retransmission queue
-            if ack is not None:
-                handler.__clean_rtx_queue()
-            handler.__process_rtx_queue()
+            handler.receive_segment()
             if handler.state == cls.ESTABLISHED:
                 return handler
 
@@ -1178,11 +1174,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.remote_ip, self.remote_port),
                 rgb=(127, 127, 127), bold=True)
         while self.state != self.CLOSED:
-            ack = self.receive_segment()
-            # process and clean retransmission queue
-            if ack is not None:
-                self.__clean_rtx_queue()
-            self.__process_rtx_queue()
+            self.receive_segment()
             if self.state == self.ESTABLISHED:
                 break
 
@@ -1264,11 +1256,6 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.close()
                 break
 
-            # process and clean retransmission queue
-            if ack is not None:
-                self.__clean_rtx_queue()
-            self.__process_rtx_queue()
-
             # send window full, do not send anything and wait for acks
             if eff_snd_wnd == 0:
                 continue
@@ -1317,11 +1304,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self.state = self.FIN_WAIT_1
         while self.state != self.CLOSING and self.state != self.TIME_WAIT and \
                 self.state != self.CLOSED:
-            ack = self.receive_segment()
-            # process and clean retransmission queue
-            if ack is not None:
-                self.__clean_rtx_queue()
-            self.__process_rtx_queue()
+            self.receive_segment()
         if self.state != self.CLOSED:
             self.state = self.CLOSED
         if self.debug:
@@ -1628,7 +1611,8 @@ class TCPHandler(ipv4.IPv4Handler):
         for rtx_entry in self._rtx_queue:
             if tools.tcp_sn_gt(
                     self._snd_una,
-                    tools.mod32(rtx_entry['segment'].seq_nr + rtx_entry['segment'].length - 1)
+                    tools.mod32(rtx_entry['segment'].seq_nr + \
+                            rtx_entry['segment'].length - 1)
                     ):
                 if rtx_entry['delay'] == 0:
                     self.__calc_rto(time_ns() - rtx_entry['time'])
@@ -1650,7 +1634,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     self.__calc_rto(time_ns() - rtx_entry['time'])
                 if self.debug:
                     tools.print_rgb(
-                            '\ttruncating segment payload in retransmission queue',
+                            '\ttruncating segment payload in rtx queue',
                             rgb=(127, 100, 100))
                     tools.print_rgb('\t\tSEQNR {} ACKNR {}'.format(
                         rtx_entry['segment'].seq_nr,
@@ -1696,9 +1680,7 @@ class TCPHandler(ipv4.IPv4Handler):
                         self._rtt // 10**6),
                         rgb=(150, 50, 50), bold=True)
             while time_ns() < backoff:
-                ack = self.receive_segment(pass_on_error)
-                if ack is not None:
-                    self.__clean_rtx_queue()
+                self.receive_segment(pass_on_error)
             return
 
         # resend timed out segments
@@ -1731,9 +1713,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 rtx_entry['time'] = curr_time
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
-            ack = self.receive_segment(pass_on_error)
-            if ack is not None:
-                self.__clean_rtx_queue()
+            self.receive_segment(pass_on_error)
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1845,6 +1825,8 @@ class TCPHandler(ipv4.IPv4Handler):
             # do not process any segments if connection is closed
             return None
 
+        self.__process_rtx_queue()
+        
         if self.local_port is None:
             raise err.InvalidPortException('local TCP port missing')
 
@@ -1895,7 +1877,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # out of order segments, packet lost? --> cat OOO
         if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt) and self.debug:
-                tools.print_rgb('\n\treceived greater seq no than expected',
+                tools.print_rgb('\n\treceived greater seq. no. than expected',
                         rgb=(199, 30, 30))
                 tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
                         rgb=(199, 30, 30))
