@@ -1251,7 +1251,7 @@ class TCPHandler(ipv4.IPv4Handler):
                     self._rem_rwnd - self._in_flight))
 
             # receive acknowledgements
-            ack = self.receive_segment()
+            self.receive_segment()
             if self.state == self.CLOSE_WAIT:
                 self.close()
                 break
@@ -1827,7 +1827,7 @@ class TCPHandler(ipv4.IPv4Handler):
             return None
 
         self.__process_rtx_queue()
-        
+
         if self.local_port is None:
             raise err.InvalidPortException('local TCP port missing')
 
@@ -1878,14 +1878,14 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # out of order segments, packet lost? --> cat OOO
         if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt) and self.debug:
-                tools.print_rgb('\n\treceived greater seq. no. than expected',
-                        rgb=(199, 30, 30))
-                tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
-                        rgb=(199, 30, 30))
-                tools.print_rgb(f'\texpected: {self._rcv_nxt}',
-                        rgb=(199, 30, 30))
-                tools.print_rgb(f'\twindow: {self._rcv_wnd}',
-                        rgb=(199, 30, 30))
+            tools.print_rgb('\n\treceived greater seq. no. than expected',
+                rgb=(199, 30, 30))
+            tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
+                rgb=(199, 30, 30))
+            tools.print_rgb(f'\texpected: {self._rcv_nxt}',
+                rgb=(199, 30, 30))
+            tools.print_rgb(f'\twindow: {self._rcv_wnd}',
+                rgb=(199, 30, 30))
 
         if not seg_cat & self.SEG_RETX:
             # update receive window size
