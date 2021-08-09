@@ -1675,6 +1675,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 tools.print_rgb('\tset slow start threshold to {}'.format(
                     self._ssthresh), rgb=(224, 127, 127))
             # Wait one RTT for ACKs
+            self._dup_ack_cnt = 0
             if self.debug:
                 tools.print_rgb('\t\t waiting {} ms for ACKs '.format(
                         self._rtt // 10**6),
@@ -1713,7 +1714,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 rtx_entry['time'] = curr_time
                 rtx_entry['delay'] += 1
                 super().send(rtx_entry['segment'], dont_frag)
-            self.receive_segment(pass_on_error)
+            #self.receive_segment(pass_on_error)
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1901,7 +1902,6 @@ class TCPHandler(ipv4.IPv4Handler):
         if self.state == self.SYN_RECEIVED:
             self.remote_ip = packet.src_addr
 
-
         if not seg_cat & self.SEG_RETX and not seg_cat & self.SEG_OOO:
             self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
             # SYN and FIN flag are treated as one virtual byte
@@ -1941,7 +1941,6 @@ class TCPHandler(ipv4.IPv4Handler):
             if self._dup_ack_cnt > 2:
                 # Fast Retransmit/Recovery
                 self.__process_rtx_queue()
-                self._dup_ack_cnt = 0
         if seg_cat & self.SEG_ACK:
             # valid ACK received
             self._dup_ack_cnt = 0
