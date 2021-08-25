@@ -667,7 +667,13 @@ class EthernetHandler:
         else:
             raise InvalidMACAddrException
 
-    local_mac = property(__get_local_mac, __set_local_mac)
+    def __del_local_mac(self):
+        '''
+        Delete local_mac
+        '''
+        self._local_mac = None
+
+    local_mac = property(__get_local_mac, __set_local_mac, __del_local_mac)
 
 
     def __get_remote_mac(self):
@@ -685,7 +691,13 @@ class EthernetHandler:
         else:
             raise InvalidMACAddrException
 
-    remote_mac = property(__get_remote_mac, __set_remote_mac)
+    def __del_remote_mac(self):
+        '''
+        Delete remote_mac
+        '''
+        self._remote_mac = None
+
+    remote_mac = property(__get_remote_mac, __set_remote_mac, __del_remote_mac)
 
 
     def __get_mtu(self):
