@@ -754,9 +754,10 @@ class EthernetHandler:
                    self.local_mac != frame.dst_addr:
                     return None, frame_type
 
-            if self.remote_mac is not None and \
-               self.remote_mac != frame.src_addr:
-                return None, frame_type
+            if not promisc:
+                if self.remote_mac is not None and \
+                   self.remote_mac != frame.src_addr:
+                    return None, frame_type
 
             if self._ether_type is not None and \
                self._ether_type != frame.ether_type:
