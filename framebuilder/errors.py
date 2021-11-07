@@ -163,3 +163,15 @@ class IncompleteFrameHeaderException(Exception):
     '''
     def __str__(self):
         return 'Frame header missing or incomplete!'
+
+
+class DestinationUnreachableException(Exception):
+    '''
+    Exception raised when route to destination can not be determined
+    '''
+    def __init__(self, ip_addr):
+        self.ip_addr = ip_addr
+        super().__init__(ip_addr)
+
+    def __str__(self):
+        return 'Destination unreachable: {}'.format(self.ip_addr)
