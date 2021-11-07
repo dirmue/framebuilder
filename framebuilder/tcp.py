@@ -1149,8 +1149,7 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         if self.state != self.CLOSED:
             raise err.NoTCPConnectionException('open() while status not closed')
-        rt_info = tools.get_route(remote_ip)
-        self.interface = rt_info['dev']
+        self.interface = tools.get_route_if_name(remote_ip)
         if local_port is not None:
             self.local_port = local_port
         else:
