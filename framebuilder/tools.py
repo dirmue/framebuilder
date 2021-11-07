@@ -7,6 +7,7 @@ import time
 import os
 import json
 import framebuilder.errors as err
+from pyroute2 import NDB, IPRoute
 
 def to_bytes(value, num_bytes):
     '''
@@ -346,7 +347,7 @@ def unhide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp', delay=0):
     except Exception as ex:
         print(ex)
 
-
+"""
 def get_ip_dict_list(ip_cmd):
     '''
     Returns the output of an iproute2 command as list of dictionaries
@@ -358,49 +359,69 @@ def get_ip_dict_list(ip_cmd):
         return json.loads(os.popen(ip_cmd).read())
     except:
         return None
-
+"""
 
 def get_route(dst_ip_addr):
     '''
-    Return selected route for dst_ip_addr
+    Return information on selected route for dst_ip_addr
     '''
-    rt_info = get_ip_dict_list('ip route get {}'.format(dst_ip_addr))
-    if rt_info is None:
-        return None
-    return rt_info[0]
+    with IPRoute() as ip:
+        try:
+            return ip.route('get', dst=dst_ip_addr)[0]
+        except Exception as e:
+            return None
 
 
-def get_neigh_cache():
+def get_route_if_name(dst_ip):
     '''
-    Return ARP/NDP cache
+    Return outgoing interface name for destination address dst_ip
     '''
-    return get_ip_dict_list('ip neigh show')
+    route = get_route(dst_ip)
+    if route is not None:
+        with IPRoute() as ip:
+            link = ip.link('get', index=route.get_attr('RTA_OIF'))[0]
+            return link.get_attr('IFLA_IFNAME')
+    raise err.DestinationUnreachableException(dst_ip) 
+
+
+
+def get_ifattr(ifname, attr):
+    '''
+    Return MTU of an interface
+    '''
+    with NDB() as ndb:
+        try:
+            return ndb.interfaces[ifname].get(attr)
+        except KeyError:
+            return None
 
 
 def get_mac_addr(ifname):
     '''
     Return hardware address of an interface
     '''
-    dev_info = get_ip_dict_list('ip link show dev {}'.format(ifname))
-    if dev_info is None:
-        return None
-    return dev_info[0].get('address', None)
+    return get_ifattr(ifname, 'address')
+
+
+def get_mtu(ifname):
+    '''
+    Return MTU of an interface
+    '''
+    return get_ifattr(ifname, 'mtu')
 
 
 def get_interface_by_address(ip_address):
     '''
-    Return look up local IP addresses and return interface name if given IP
+    Look up local IP addresses and return interface name if given IP
     address is found
     '''
-    if_addr = get_ip_dict_list('ip addr show')
-    for if_data in if_addr:
-        addr_info = if_data.get('addr_info', None)
-        if addr_info is None:
-            break
-        for addr in addr_info:
-            if addr['local'] == ip_address:
-                return if_data['ifname']
-    return None
+    with IPRoute() as ip:
+        try:
+            addr_info = ip.get_addr(address=ip_address)[0]
+            if_index = addr_info['index']
+            return ip.get_links(if_index)[0].get_attr('IFLA_IFNAME')
+        except IndexError:
+            return None
 
 
 def get_local_IP_addresses(family=None):
@@ -415,17 +436,20 @@ def get_local_IP_addresses(family=None):
     :param family: address family (optional, 4=IPv4, 6=IPv6)
     '''
     result = {}
-    if family in [4,6]:
-        if_addr = get_ip_dict_list('ip -{} addr show'.format(family))
-    else:
-        if_addr = get_ip_dict_list('ip addr show')
-    for if_data in if_addr:
-        result[if_data['ifname']] = []
-        addr_info = if_data.get('addr_info', None)
-        if addr_info is None:
-            break
-        for addr in addr_info:
-            result[if_data['ifname']].append(addr['local'])
+    ifaddr = ()
+    with IPRoute() as ip:
+        if family == 6:
+            if_addr = ip.get_addr(family=10)
+        elif family == 4:
+            if_addr = ip.get_addr(family=2)
+        else:
+            if_addr = ip.get_addr()
+        for if_data in if_addr:
+            if_name = ip.link('get', index=if_data['index'])[0].get_attr('IFLA_IFNAME')
+            if result.get(if_name, None) == None:
+                result[if_name] = [if_data.get_attr('IFA_ADDRESS')]
+            else:
+                result[if_name].append(if_data.get_attr('IFA_ADDRESS'))
     return result
 
 
@@ -437,27 +461,22 @@ def get_mac_for_dst_ip(ip_addr):
     if local_if is not None:
         return get_mac_addr(local_if)
     rt_info = get_route(ip_addr)
-    n_cache = get_neigh_cache()
+    if rt_info is None:
+        raise err.FailedMACQueryException(ip_addr)
+    gateway = rt_info.get_attr('RTA_GATEWAY')
     # check if there is a gateway and query neighbor cache for MAC address
-    if rt_info.get('gateway', None) is not None:
-        for n_entry in n_cache:
-            if n_entry['dst'] == rt_info['gateway']:
-                return n_entry['lladdr']
+    if gateway is not None:
+        with IPRoute() as ip:
+            for n_entry in ip.get_neighbours():
+                if n_entry.get_attr('NDA_DST') == gateway:
+                    return n_entry.get_attr('NDA_LLADDR')
     # if not query neighbor cache for destination IP address directly
     else:
-        for n_entry in n_cache:
-            if n_entry['dst'] == ip_addr:
-                return n_entry['lladdr']
+        with IPRoute() as ip:
+            for n_entry in ip.get_neighbours():
+                if n_entry.get_attr('NDA_DST') == ip_addr:
+                    return n_entry.get_attr('NDA_LLADDR')
     raise err.FailedMACQueryException(ip_addr)
-
-def get_mtu(ifname):
-    '''
-    Return MTU of an interface
-    '''
-    dev_info = get_ip_dict_list('ip link show dev {}'.format(ifname))
-    if dev_info is None:
-        return None
-    return int(dev_info[0].get('mtu', '0'))
 
 
 def print_rgb(string, rgb=(255, 255, 255), bold=False, end=None):
