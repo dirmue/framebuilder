@@ -1000,7 +1000,7 @@ class TCPHandler(ipv4.IPv4Handler):
                 self.TIME_WAIT: self.__recv_time_wait
                 }
 
-        super().__init__(interface, remote_ip, block=0, t_out=t_out)
+        super().__init__(interface, remote_ip, block=0, t_out=t_out, proto=6)
 
         self._mss = self.mtu - 40
 
