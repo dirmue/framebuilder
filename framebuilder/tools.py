@@ -503,7 +503,7 @@ def get_rfc793_isn():
     Return a new 32 bit initial TCP segment number based on the insecure
     (but simple) RFC793 timer method
     '''
-    return (int(time.time_ns() // 1e6) >> 2) & 0xffffffff
+    return (int(time.time_ns() // 1e3) >> 2) & 0xffffffff
 
 
 def tcp_sn_lt(val1, val2):
