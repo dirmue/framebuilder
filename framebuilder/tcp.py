@@ -956,6 +956,8 @@ class TCPHandler(ipv4.IPv4Handler):
         # }, ...]
         self._rtx_queue = []
 
+        self._rtx_timer = 0
+
         # bytes in flight
         self._in_flight = 0
 
@@ -1140,8 +1142,7 @@ class TCPHandler(ipv4.IPv4Handler):
 
     def open(self, remote_ip, remote_port, local_port=None):
         '''
-        Establish a TCP connection to a remote TCP server and return a new
-        TCP Handler
+        Establish a TCP connection to a remote TCP server
 
         :param remote_ip: IP address of the server
         :param remote_port: TCP port to connect to
@@ -1270,6 +1271,9 @@ class TCPHandler(ipv4.IPv4Handler):
             if payload is None:
                 continue
 
+            if self.debug:
+                tools.print_rgb('\teffective send window = {} bytes'.format(
+                        eff_snd_wnd), rgb=(127, 127, 127))
             segment = TCPSegment()
             segment.payload = payload
             segment.src_port = self.local_port
@@ -1643,6 +1647,8 @@ class TCPHandler(ipv4.IPv4Handler):
                         rtx_entry['segment'].seq_nr,
                         rtx_entry['segment'].length), rgb=(255, 0, 0))
             unacknowledged.append(rtx_entry)
+        if len(unacknowledged) < len(self._rtx_queue):
+            self._rtx_timer = time_ns() if len(unacknowledged) > 0 else 0
         self._rtx_queue = unacknowledged
 
 
@@ -1650,8 +1656,14 @@ class TCPHandler(ipv4.IPv4Handler):
         '''
         resend unacknowledged segments if rto is exceeded
         '''
+        if len(self._rtx_queue) > 0:
+            rtx_entry = self._rtx_queue[0]
+        else:
+            return
         if self.state == self.CLOSED:
             self._rtx_queue.clear()
+            return
+        if self._rtx_timer == 0:
             return
         backoff = 0
         if self._dup_ack_cnt > 2:
@@ -1659,16 +1671,16 @@ class TCPHandler(ipv4.IPv4Handler):
             if self.debug:
                 tools.print_rgb('\ttriple DUP-ACKs, resending ALL segments:',
                         rgb=(255, 50, 50), bold=True)
-            for rtx_entry in self._rtx_queue:
-                self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
-                if self.debug:
-                    tools.print_rgb('\t\t resending {}'.format(
-                            rtx_entry['segment'].seq_nr),
-                            rgb=(127, 127, 127), bold=True)
-                super().send(rtx_entry['segment'], dont_frag)
-                curr_time = time_ns()
-                rtx_entry['time'] = curr_time
-                backoff = curr_time + self._rtt
+            self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
+            if self.debug:
+                tools.print_rgb('\t\t resending {}'.format(
+                        rtx_entry['segment'].seq_nr),
+                        rgb=(127, 127, 127), bold=True)
+            super().send(rtx_entry['segment'], dont_frag)
+            curr_time = time_ns()
+            rtx_entry['time'] = curr_time
+            backoff = curr_time + self._rtt
+            self._rtx_timer = curr_time
             self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
             if self.debug:
                 tools.print_rgb('\tset slow start threshold to {}'.format(
@@ -1685,35 +1697,32 @@ class TCPHandler(ipv4.IPv4Handler):
 
         # resend timed out segments
         curr_time = time_ns()
-        for rtx_entry in self._rtx_queue:
-            if rtx_entry['time'] + (self._rto << rtx_entry['delay']) < curr_time:
-                # Timeout! RFC 2581: ssthresh = max (FlightSize / 2, 2*SMSS)
-                # Implementation Note: an easy mistake to make is to
-                # simply use cwnd, rather than FlightSize, which in some
-                # implementations may incidentally increase well beyond rwnd.
-                self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
-                self._snd_wnd = self._mss
-                if self.debug:
-                    tools.print_rgb(
-                        '\tretransmission timeout exceeded, resend segment',
-                        rgb=(255, 50, 50), bold=True)
-                    tools.print_rgb(
-                            '\t\tSEQNR {} ACKNR {} WAITT {} ns RTO {} ns'.format(
-                            rtx_entry['segment'].seq_nr,
-                            rtx_entry['segment'].ack_nr,
-                            curr_time - rtx_entry['time'],
-                            self._rto), rgb=(255, 50, 50))
-                    tools.print_rgb(
-                        '\t\tset SND_WND {} SSTHRESH {}'.format(
-                            self._snd_wnd, self._ssthresh),
-                        rgb=(150, 50, 50), bold=True)
-                if rtx_entry['delay'] > 6:
-                    self.abort()
-                    break
-                rtx_entry['time'] = curr_time
-                rtx_entry['delay'] += 1
-                super().send(rtx_entry['segment'], dont_frag)
-            #self.receive_segment(pass_on_error)
+        if self._rtx_timer + (self._rto << rtx_entry['delay']) < curr_time:
+            # Timeout! RFC 2581: ssthresh = max (FlightSize / 2, 2*SMSS)
+            # Implementation Note: an easy mistake to make is to
+            # simply use cwnd, rather than FlightSize, which in some
+            # implementations may incidentally increase well beyond rwnd.
+            self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+            self._snd_wnd = self._mss
+            if self.debug:
+                tools.print_rgb(
+                    '\tretransmission timeout exceeded, resend segment',
+                    rgb=(255, 50, 50), bold=True)
+                tools.print_rgb(
+                        '\t\tSEQNR {} ACKNR {} WAITT {} ns RTO {} ns'.format(
+                        rtx_entry['segment'].seq_nr,
+                        rtx_entry['segment'].ack_nr,
+                        curr_time - self._rtx_timer,
+                        self._rto), rgb=(255, 50, 50))
+                tools.print_rgb(
+                    '\t\tset SND_WND {} SSTHRESH {}'.format(
+                        self._snd_wnd, self._ssthresh),
+                    rgb=(150, 50, 50), bold=True)
+            if rtx_entry['delay'] > 6:
+                self.abort()
+            self._rtx_timer = curr_time
+            rtx_entry['delay'] += 1
+            super().send(rtx_entry['segment'], dont_frag)
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1730,6 +1739,8 @@ class TCPHandler(ipv4.IPv4Handler):
             ack_len += 1
         if ack_len > 0:
             self._in_flight += segment.length
+            if len(self._rtx_queue) == 0:
+                self._rtx_timer == time_ns()
             self._rtx_queue.append({'segment': segment,
                                     'time': time_ns(),
                                     'delay': 0})
@@ -1876,15 +1887,16 @@ class TCPHandler(ipv4.IPv4Handler):
         seg_cat = self.__categorize_segment(next_seg)
 
         # out of order segments, packet lost? --> cat OOO
-        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt) and self.debug:
-            tools.print_rgb('\n\treceived greater seq. no. than expected',
-                rgb=(199, 30, 30))
-            tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
-                rgb=(199, 30, 30))
-            tools.print_rgb(f'\texpected: {self._rcv_nxt}',
-                rgb=(199, 30, 30))
-            tools.print_rgb(f'\twindow: {self._rcv_wnd}',
-                rgb=(199, 30, 30))
+        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt):
+            if self.debug:
+                tools.print_rgb('\n\treceived greater seq. no. than expected',
+                    rgb=(199, 30, 30))
+                tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
+                    rgb=(199, 30, 30))
+                tools.print_rgb(f'\texpected: {self._rcv_nxt}',
+                    rgb=(199, 30, 30))
+                tools.print_rgb(f'\twindow: {self._rcv_wnd}',
+                    rgb=(199, 30, 30))
 
         if not seg_cat & self.SEG_RETX:
             # update receive window size
@@ -1948,13 +1960,13 @@ class TCPHandler(ipv4.IPv4Handler):
                 # Slow Start
                 self._snd_wnd += self._mss
                 if self.debug:
-                    tools.print_rgb('\tincreased cwnd to {} bytes'.format(
+                    tools.print_rgb('\tSLOW_START: cwnd = {} bytes'.format(
                         self._snd_wnd), rgb=(127, 127, 127))
             else:
                 # Congestion Avoidance
                 self._snd_wnd += self._mss * self._mss // self._snd_wnd
                 if self.debug:
-                    tools.print_rgb('\tincreased cwnd to {} bytes'.format(
+                    tools.print_rgb('\tAIMD: cwnd = {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
         if seg_cat & self.SEG_RETX or seg_cat & self.SEG_OOO:
             return None
