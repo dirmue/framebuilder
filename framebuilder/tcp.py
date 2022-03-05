@@ -1687,7 +1687,8 @@ class TCPHandler(ipv4.IPv4Handler):
             curr_time = time_ns()
             self._rtx_queue[0]['time'] = curr_time
             self._rtx_timer = curr_time
-            self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+            #self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+            self._ssthresh = max(self._snd_wnd // 2, 2 * self._mss)
             self._snd_wnd = self._ssthresh
             if self.debug:
                 tools.print_rgb('\tset slow start threshold to {}'.format(
@@ -1701,7 +1702,9 @@ class TCPHandler(ipv4.IPv4Handler):
             # Implementation Note: an easy mistake to make is to
             # simply use cwnd, rather than FlightSize, which in some
             # implementations may incidentally increase well beyond rwnd.
-            self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+
+            #self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+            self._ssthresh = max(self._snd_wnd // 2, 2 * self._mss)
             self._snd_wnd = self._mss
             if self.debug:
                 tools.print_rgb(
