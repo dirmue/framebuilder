@@ -948,7 +948,7 @@ class TCPHandler(ipv4.IPv4Handler):
         self._remote_port = None
         self._remote_ip = remote_ip
 
-        # retransmission Queue
+        # retransmission queue
         # [{
         #   'segment': <TCPSegment>,
         #   'time': <int>,
@@ -957,6 +957,13 @@ class TCPHandler(ipv4.IPv4Handler):
         self._rtx_queue = []
 
         self._rtx_timer = 0
+
+        # out-of-order queue
+        # {
+        #   <Sequence Number>: <TCPSegment>,
+        #   ...
+        # }
+        self._ooo_queue = {}
 
         # bytes in flight
         self._in_flight = 0
@@ -1197,18 +1204,20 @@ class TCPHandler(ipv4.IPv4Handler):
 
     def __get_send_payload(self, eff_snd_wnd):
         '''
-        Implements Nagel's algorithm
+        Implements Nagle's algorithm
         :param eff_snd_wnd: effective send window
         :returns: payload as bytes or None if payload < MSS and outstanding acks
         '''
         payload = b''
         slen = min(self._mss, eff_snd_wnd)
         if len(self._rtx_queue) > 0:
+            # There is still unacknowledged data
             if len(self._send_buffer) < self._mss:
                 return None
             payload = bytes(self._send_buffer[0:slen])
             self._send_buffer = self._send_buffer[slen:]
         else:
+            # No unacknowledged data
             if len(self._send_buffer) > self._mss:
                 payload = bytes(self._send_buffer[0:slen])
                 self._send_buffer = self._send_buffer[slen:]
@@ -1884,40 +1893,57 @@ class TCPHandler(ipv4.IPv4Handler):
                         rgb=(199, 30, 30))
             return None
 
-        seg_cat = self.__categorize_segment(next_seg)
-
-        # out of order segments, packet lost? --> cat OOO
-        if tools.tcp_sn_gt(next_seg.seq_nr, self._rcv_nxt):
-            if self.debug:
-                tools.print_rgb('\n\treceived greater seq. no. than expected',
-                    rgb=(199, 30, 30))
-                tools.print_rgb(f'\tseq nr: {segment.seq_nr}',
-                    rgb=(199, 30, 30))
-                tools.print_rgb(f'\texpected: {self._rcv_nxt}',
-                    rgb=(199, 30, 30))
-                tools.print_rgb(f'\twindow: {self._rcv_wnd}',
-                    rgb=(199, 30, 30))
-
-        if not seg_cat & self.SEG_RETX:
-            # update receive window size
-            pl_len = next_seg.length
-            if pl_len > 0:
-                self._recv_buffer.extend(next_seg.payload)
-                rwin_bytes = self._rcv_wnd
-                buf_len = len(self._recv_buffer)
-                if rwin_bytes > buf_len:
-                    self._rcv_wnd = rwin_bytes - buf_len
-                else:
-                    self._rcv_wnd = 0
-
         if self.state == self.SYN_RECEIVED:
             self.remote_ip = packet.src_addr
 
+        return self.__process_segment(next_seg)
+
+
+    def __extend_recv_buffer(self, next_seg):
+        '''
+        Add payload data of next_seg to the receive buffer and
+        update the receive window
+
+        :param next_seg: TCP segment to be processed
+        '''
+        pl_len = next_seg.length
+        if pl_len > 0:
+            self._recv_buffer.extend(next_seg.payload)
+            rwin_bytes = self._rcv_wnd
+            buf_len = len(self._recv_buffer)
+            if rwin_bytes > buf_len:
+                self._rcv_wnd = rwin_bytes - buf_len
+            else:
+                self._rcv_wnd = 0
+
+
+    def __process_segment(self, next_seg):
+        '''
+        Categorize and process incoming or buffered TCP segment
+
+        :param next_seg: TCP segment to process
+        '''
+        seg_cat = self.__categorize_segment(next_seg)
+        
+        if not seg_cat & self.SEG_RETX and not seg_cat & self.SEG_OOO:
+            self.__extend_recv_buffer(next_seg)
+
+        # advance self._rcv_nxt
         if not seg_cat & self.SEG_RETX and not seg_cat & self.SEG_OOO:
             self._rcv_nxt = tools.mod32(self._rcv_nxt + next_seg.length)
             # SYN and FIN flag are treated as one virtual byte
             if next_seg.syn == 1 or next_seg.fin == 1:
                 self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
+            # now process previously received out-of-order segments
+            if len(self._ooo_queue) > 0:
+                for seq_nr in sorted(self._ooo_queue):
+                    if seq_nr == self._rcv_nxt:
+                        ooo_seg = self._ooo_queue[seq_nr]
+                        self.__extend_recv_buffer(self._ooo_queue[seq_nr])
+                        self._rcv_nxt = tools.mod32(self._rcv_nxt + ooo_seg.length)
+                        if next_seg.syn == 1 or next_seg.fin == 1:
+                            self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
+                        del self._ooo_queue[seq_nr]
 
         # advance self._una if ack number is greater or equal UNA
         if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
@@ -1968,7 +1994,11 @@ class TCPHandler(ipv4.IPv4Handler):
                 if self.debug:
                     tools.print_rgb('\tAIMD: cwnd = {} bytes'.format(
                                 self._snd_wnd), rgb=(127, 127, 127))
-        if seg_cat & self.SEG_RETX or seg_cat & self.SEG_OOO:
+        if seg_cat & self.SEG_RETX:
+            return None
+        if seg_cat & self.SEG_OOO:
+            # buffering out-of-order segments
+            self._ooo_queue[next_seg.seq_nr] = next_seg
             return None
         self.__clean_rtx_queue()
         return next_seg
