@@ -1688,7 +1688,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self._rtx_queue[0]['time'] = curr_time
             self._rtx_timer = curr_time
             self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
-            self._snd_wnd = self._ssthresh * self._mss
+            self._snd_wnd = self._ssthresh
             if self.debug:
                 tools.print_rgb('\tset slow start threshold to {}'.format(
                     self._ssthresh), rgb=(224, 127, 127))
@@ -1743,7 +1743,7 @@ class TCPHandler(ipv4.IPv4Handler):
             self._rtx_queue.append({'segment': segment,
                                     'time': time_ns(),
                                     'delay': 0})
-            self._snd_nxt = tools.mod32(self._snd_nxt + ack_len)
+        self._snd_nxt = tools.mod32(self._snd_nxt + ack_len)
         if self.debug:
             tools.print_rgb(
                     '\n-{:->9}-Bytes--SEQ-{:-<10}--ACK-{:-<10}'.format(
