@@ -1674,34 +1674,24 @@ class TCPHandler(ipv4.IPv4Handler):
             return
         if self._rtx_timer == 0:
             return
-        backoff = 0
         if self._dup_ack_cnt > 2:
-            # Third duplicate ACK in a row --> Fast Retransmission
             if self.debug:
-                tools.print_rgb('\ttriple DUP-ACK:',
-                        rgb=(255, 50, 50), bold=True)
-            self._snd_wnd = self._ssthresh + self._dup_ack_cnt * self._mss
+                tools.print_rgb('\ttriple DUP-ACK: ',
+                        rgb=(255, 50, 50), bold=True, end='')
             if self.debug:
-                tools.print_rgb('\t\t resending {}'.format(
+                tools.print_rgb('resending {}'.format(
                         rtx_entry['segment'].seq_nr),
                         rgb=(127, 127, 127), bold=True)
             self._dup_ack_cnt = 0
             super().send(rtx_entry['segment'], dont_frag)
             curr_time = time_ns()
-            rtx_entry['time'] = curr_time
-            backoff = curr_time + self._rtt
+            self._rtx_queue[0]['time'] = curr_time
             self._rtx_timer = curr_time
             self._ssthresh = max(self._in_flight // 2, 2 * self._mss)
+            self._snd_wnd = self._ssthresh * self._mss
             if self.debug:
                 tools.print_rgb('\tset slow start threshold to {}'.format(
                     self._ssthresh), rgb=(224, 127, 127))
-            # Wait one RTT for ACKs
-            if self.debug:
-                tools.print_rgb('\t\t waiting {} ms for ACKs '.format(
-                        self._rtt // 10**6),
-                        rgb=(150, 50, 50), bold=True)
-            while time_ns() < backoff:
-                self.receive_segment(pass_on_error)
             return
 
         # resend timed out segments
@@ -1729,9 +1719,9 @@ class TCPHandler(ipv4.IPv4Handler):
                     rgb=(150, 50, 50), bold=True)
             if rtx_entry['delay'] > 6:
                 self.abort()
-            self._rtx_timer = curr_time
-            rtx_entry['delay'] += 1
             super().send(rtx_entry['segment'], dont_frag)
+            self._rtx_timer = curr_time
+            self._rtx_queue[0]['delay'] += 1
 
 
     def send_segment(self, segment, dont_frag=True):
@@ -1937,7 +1927,11 @@ class TCPHandler(ipv4.IPv4Handler):
             # now process previously received out-of-order segments
             if len(self._ooo_queue) > 0:
                 if self.debug:
-                    tools.print_rgb('\nprocessing OOO queue', rgb=(127, 127, 127))
+                    tools.print_rgb('\tprocessing OOO queue', rgb=(127, 127, 127))
+                    tools.print_rgb(f'\t{len(self._ooo_queue)} segments -->', 
+                            rgb=(127, 127, 127),
+                            bold=True,
+                            end='')
                 for seq_nr in sorted(self._ooo_queue):
                     if seq_nr == self._rcv_nxt:
                         ooo_seg = self._ooo_queue[seq_nr]
@@ -1946,6 +1940,9 @@ class TCPHandler(ipv4.IPv4Handler):
                         if next_seg.syn == 1 or next_seg.fin == 1:
                             self._rcv_nxt = tools.mod32(self._rcv_nxt + 1)
                         del self._ooo_queue[seq_nr]
+                if self.debug:
+                    tools.print_rgb(f'\t{len(self._ooo_queue)} segments', 
+                            rgb=(127, 127, 127), bold=True)
 
         # advance self._una if ack number is greater or equal UNA
         if tools.tcp_sn_gt(next_seg.ack_nr, tools.mod32(self._snd_una - 1)):
