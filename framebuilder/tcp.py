@@ -1657,8 +1657,7 @@ class TCPHandler(ipv4.IPv4Handler):
                         rtx_entry['segment'].length), rgb=(255, 0, 0))
             unacknowledged.append(rtx_entry)
         if len(unacknowledged) < len(self._rtx_queue):
-            #self._rtx_timer = time_ns() if len(unacknowledged) > 0 else 0
-            self._rtx_timer = time_ns()
+            self._rtx_timer = time_ns() if len(unacknowledged) > 0 else 0
         self._rtx_queue = unacknowledged
 
 
@@ -1749,8 +1748,8 @@ class TCPHandler(ipv4.IPv4Handler):
             ack_len += 1
         if ack_len > 0:
             self._in_flight += segment.length
-            if len(self._rtx_queue) > 0: #???
-                self._rtx_timer == time_ns()
+            if len(self._rtx_queue) == 0:
+                self._rtx_timer = time_ns()
             self._rtx_queue.append({'segment': segment,
                                     'time': time_ns(),
                                     'delay': 0})
