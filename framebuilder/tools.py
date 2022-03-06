@@ -204,6 +204,8 @@ def is_valid_mac_address(mac):
     colons
     :param mac: String containing a MAC address
     '''
+    if mac is None:
+        return False
     is_valid = bool(re.fullmatch('([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', mac))
     if not is_valid:
         is_valid = bool(re.fullmatch('([0-9A-Fa-f]{2}){6}', mac))

@@ -162,7 +162,7 @@ class Frame:
         if is_valid_mac_address(dst_addr):
             self._dst_addr = dst_addr.replace(':', '')
         else:
-            raise InvalidMACAddrException(src_addr)
+            raise InvalidMACAddrException(dst_addr)
 
         self._ether_type = frame_data.get('ether_type', 0) & 0xffff
 
