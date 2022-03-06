@@ -626,6 +626,8 @@ class EthernetHandler:
             for num_try in range(max_try):
                 try:
                     self._remote_mac = get_mac_for_dst_ip(packet.dst_addr)
+                    if self._remote_mac is None:
+                        raise FailedMACQueryException(f'IP {packet.dst_addr}')
                     break
                 except FailedMACQueryException as e:
                     # set an invalid ARP cache entry and try to update it
