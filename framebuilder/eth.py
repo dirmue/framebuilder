@@ -1,17 +1,20 @@
 '''Module for layer 2 functions'''
 
 import struct
+import sys
+from time import sleep
 from framebuilder.tools import to_bytes, ipv4_addr_encode, \
                                is_valid_mac_address, \
                                get_bytes_at, get_value_at, \
                                is_valid_ipv4_address, \
                                format_mac_addr, get_mac_addr, create_socket, \
-                               get_mtu, get_mac_for_dst_ip
+                               get_mtu, get_mac_for_dst_ip, set_neigh
 
 from framebuilder.errors import InvalidMACAddrException, \
                                 InvalidIPv4AddrException, \
                                 IncompleteFrameHeaderException, \
-                                MTUExceededException
+                                MTUExceededException, \
+                                FailedMACQueryException
 
 from framebuilder.defs import get_protocol_str
 
@@ -619,7 +622,30 @@ class EthernetHandler:
         Initialize frame with empty payload
         '''
         if self._remote_mac is None:
-            self._remote_mac = get_mac_for_dst_ip(packet.dst_addr)
+            max_try = 5
+            for num_try in range(max_try):
+                try:
+                    self._remote_mac = get_mac_for_dst_ip(packet.dst_addr)
+                    break
+                except FailedMACQueryException as e:
+                    # set an invalid ARP cache entry and try to update it
+                    set_neigh(self._interface, packet.dst_addr)
+                    if num_try < max_try - 1:
+                        arp_data = {
+                            'operation': 1,
+                            'src_addr': self._local_mac,
+                            'dst_addr': 'ff:ff:ff:ff:ff:ff',
+                            'snd_hw_addr': self._local_mac,
+                            'snd_ip_addr': packet.src_addr,
+                            'tgt_hw_addr': '00:00:00:00:00:00',
+                            'tgt_ip_addr': packet.dst_addr
+                            }
+                        arp_msg = ArpMessage(arp_data, self._vlan_tag)
+                        arp_msg.send(self._socket, self._mtu)
+                        sleep(0.2)
+                    else:
+                        print(str(e))
+                        sys.exit(1)
 
         if self._ether_type is None:
             self._ether_type = 0x0800

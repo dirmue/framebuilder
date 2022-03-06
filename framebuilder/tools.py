@@ -8,6 +8,7 @@ import os
 import json
 import framebuilder.errors as err
 from pyroute2 import NDB, IPRoute
+from pr2modules.netlink.rtnl import ndmsg
 
 def to_bytes(value, num_bytes):
     '''
@@ -453,6 +454,21 @@ def get_local_IP_addresses(family=None):
     return result
 
 
+def get_if_ipv4_addr(ifname):
+    '''
+    Return the first IPv4 address of an interface
+
+    :param ifname: interface name
+    '''
+    if_data = get_local_IP_addresses(family=4)
+    result = if_data.get(ifname, None)
+    if result is None:
+        return None
+    if len(result) == 0:
+        return None
+    return result[0]
+
+
 def get_mac_for_dst_ip(ip_addr):
     '''
     Query neighbor cache for destination MAC address
@@ -477,6 +493,23 @@ def get_mac_for_dst_ip(ip_addr):
                 if n_entry.get_attr('NDA_DST') == ip_addr:
                     return n_entry.get_attr('NDA_LLADDR')
     raise err.FailedMACQueryException(ip_addr)
+
+
+def set_neigh(if_name, ip_addr, mac_addr='00:00:00:00:00:00', state='failed'):
+    '''
+    Set or add a neighbour cache entry
+
+    :param if_name: interface name
+    :param ip_addr: target IP address
+    :param mac_addr: MAC address
+    '''
+    with IPRoute() as ip:
+        idx = ip.link_lookup(ifname=if_name)[0]
+        ip.neigh('set',
+                 dst=ip_addr,
+                 lladdr=mac_addr,
+                 ifindex=idx,
+                 state=ndmsg.states[state])
 
 
 def print_rgb(string, rgb=(255, 255, 255), bold=False, end=None):
