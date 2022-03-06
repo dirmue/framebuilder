@@ -15,19 +15,15 @@ from framebuilder import eth
 MAX_TTL = 64
 
 class IPv4Option:
-    '''
-    Create an IPv4 option
-    '''
+    '''Create an IPv4 option'''
 
     def __init__(self, opt_data=None):
         '''
         Initialize IPv4 option
         :param opt_data: dictionary containing options data as follows
-        {
-            'option_type': <int> 1 byte option type identifier,
-            'option_length': <int> 1 byte option length,
-            'option_data': <bytes> option data
-        }
+                         {'option_type': <int> 1 byte option type identifier,
+                          'option_length': <int> 1 byte option length,
+                          'option_data': <bytes> option data}
         '''
         if opt_data is None:
             opt_data = {}
@@ -44,7 +40,8 @@ class IPv4Option:
     def from_bytes(cls, opt_bytes):
         '''
         Initialize IPv4 options object from bytes
-        :param opt_bytes: <bytes> data
+        :param bytes opt_bytes: data
+        :returns: IPv4Option object
         '''
         opt_data = {}
 
@@ -103,7 +100,7 @@ class IPv4Packet:
      0                   1                   2                   3
      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |Version|  IHL  |Type of Service|          Total Length         |
+    |Version|  IHL  | DiffServ (TOS)|          Total Length         |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |         Identification        |Flags|      Fragment Offset    |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -181,6 +178,9 @@ class IPv4Packet:
     def from_bytes(cls, ip4_bytes):
         '''
         create IPv4 packet from bytes
+
+        :param bytes ipv4_bytes: byte representation of an IPv4 packet
+        :returns: IPv4Packet object
         '''
         ip4_data = {}
 
@@ -226,7 +226,8 @@ class IPv4Packet:
 
     def get_dict(self):
         '''
-        Return header data as dictionary
+        Expose header data as dictionary
+        :returns: dict of IPv4 header values
         '''
         dct = {
             'version': self.version,
@@ -269,7 +270,8 @@ class IPv4Packet:
 
     def get_bytes(self):
         '''
-        returns IPv4 packet bytes
+        Get IPv4 packet bytes
+        :returns: byte representation of an IPv4 packet
         '''
         ver_ihl = (self.version << 4) + self.ihl
         flags_off = (self.flags << 13) + self.frag_offset
@@ -911,12 +913,12 @@ class IPv4Handler(eth.EthernetHandler):
         Receive next packet, i.e. either set packet to None or IPv4Packet
         object created from received frame
 
-        Return True if a full packet is received and false if only a fragment
-        or nothing suitable has been received
+        If a full packet is received, it will be returned as IPv4Packet object, 
+        otherwise the return value will be None
 
         :param pass_on_error: <bool> ignore exceptions thrown by socket.recv
-        :any_source: <bool> accept packets from any source
-        :promisc: <bool> receive packets that are not for us
+        :param promisc: <bool> receive packets that are send to foreign hosts
+        :returns: IPv4Packet or None
         '''
         frame, frame_type = super().receive(pass_on_error, promisc)
 
