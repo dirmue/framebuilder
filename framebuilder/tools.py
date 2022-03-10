@@ -350,19 +350,6 @@ def unhide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp', delay=0):
     except Exception as ex:
         print(ex)
 
-"""
-def get_ip_dict_list(ip_cmd):
-    '''
-    Returns the output of an iproute2 command as list of dictionaries
-    '''
-    if not '--json' in ip_cmd.split():
-        ip_cmd = ip_cmd.replace('ip', 'ip --json')
-
-    try:
-        return json.loads(os.popen(ip_cmd).read())
-    except:
-        return None
-"""
 
 def get_route(dst_ip_addr):
     '''
@@ -386,6 +373,15 @@ def get_route_if_name(dst_ip):
             return link.get_attr('IFLA_IFNAME')
     raise err.DestinationUnreachableException(dst_ip) 
 
+
+def get_route_gateway(dst_ip):
+    '''
+    Return gateway IP address for destination address dst_ip
+    '''
+    route = get_route(dst_ip)
+    if route is not None:
+        return route.get_attr('RTA_GATEWAY')
+    raise err.DestinationUnreachableException(dst_ip) 
 
 
 def get_ifattr(ifname, attr):
