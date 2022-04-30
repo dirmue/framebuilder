@@ -1,4 +1,4 @@
-'''This module provides definitions and mappings used in by custompk'''
+'''This module provides definitions and mappings used by framebuilder'''
 
 def get_pk_type_str(pktype):
     '''
