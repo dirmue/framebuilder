@@ -1,5 +1,5 @@
 '''
-Module for ICMP functions used by custompk
+Module for ICMP functions used by framebuilder
 '''
 
 from socket import inet_ntoa

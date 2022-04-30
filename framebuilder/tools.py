@@ -1,4 +1,4 @@
-'''Module containing helper functions and utilities used by custompk'''
+'''Module containing helper functions and utilities used by framebuilder'''
 
 import socket
 import re
@@ -253,7 +253,7 @@ def hide_from_kernel(in_iface, remote_ip, remote_port, proto='tcp'):
     prevent the kernel from interfering with this connection.
 
     Attention: Make sure to unhide the port again and be aware that this can
-               interfere with other services!
+               interfer with other services!
     :param in_iface: <str> inbound interface
     :param remote_ip: <str> IP adress of the remote host
     :param remote_port: <int> remote port
@@ -305,7 +305,7 @@ def hide_from_krnl_in(in_iface, local_ip, local_port, proto='tcp'):
     prevent the kernel from interfering with this connection.
 
     Attention: Make sure to unhide the port again and be aware that this can
-               interfere with other services!
+               interfer with other services!
     :param in_iface: <str> inbound interface
     :param local_ip: <str> local IP adress
     :param local_port: <int> local port

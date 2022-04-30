@@ -1,4 +1,4 @@
-'''Module for UDP functions used by custompk'''
+'''Module for UDP functions used by framebuilder'''
 
 from framebuilder import tools, layer4
 
