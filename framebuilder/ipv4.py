@@ -673,7 +673,8 @@ class IPv4Packet:
         o_data['option_data'] = bytes(tools.to_bytes(o_pointer, 1)
                                       + o_recrt_field)
         self._options.append(IPv4Option(o_data))
-        self._ihl = None
+        if self._ihl is not None and self._ihl + entries <= 14:
+            self._ihl = self._ihl + entries
         self._checksum = None
         self._total_length = None
 
@@ -695,7 +696,8 @@ class IPv4Packet:
                                       + tools.to_bytes(o_oflw_flg, 1)
                                       + o_its_field)
         self._options.append(IPv4Option(o_data))
-        self._ihl = None
+        if self._ihl is not None and self._ihl + entries <= 13:
+            self._ihl = self._ihl + entries
         self._checksum = None
         self._total_length = None
 
